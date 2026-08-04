@@ -43,6 +43,16 @@ Authentication, storage, and AI calls must be isolated behind small service modu
 - Project access is checked on the server before reading or changing project data.
 - Browser-supplied project IDs are never trusted without a server-side access check.
 
+### Clerk wiring
+
+- `ClerkProvider` wraps the root layout from inside `<body>`, which the Next.js SDK requires.
+- `proxy.ts` at the project root holds `clerkMiddleware`. Next.js 16 renamed `middleware.ts` to `proxy.ts`; there is no `middleware.ts`.
+- The proxy is **protected-first**: it calls `auth.protect()` for every path that is not a public auth path, so a new route is protected without editing the proxy.
+- `lib/auth-routes.ts` is the single source for the public paths. It reads `NEXT_PUBLIC_CLERK_SIGN_IN_URL` and `NEXT_PUBLIC_CLERK_SIGN_UP_URL` so the proxy, the `/` redirect, and Clerk's own redirects cannot drift apart.
+- The proxy is the coarse gate only. Clerk deprecated `createRouteMatcher` because path matching in a proxy can diverge from how Next.js resolves a request, so it does not replace the server-side access checks required by invariant 6. Read auth with `await auth()` in the page, layout, route handler, or server function that touches protected data.
+- `/` owns no content. It reads `await auth()` and redirects to `/editor` when authenticated and to the sign-in path when not.
+- Required environment variables: `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`, `NEXT_PUBLIC_CLERK_SIGN_IN_URL`, and `NEXT_PUBLIC_CLERK_SIGN_UP_URL`. Do not rename or add to these.
+
 ## Background and AI Model
 
 - Normal request handlers validate input, check access, create task records, and trigger work.

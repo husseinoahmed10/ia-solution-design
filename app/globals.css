@@ -44,6 +44,9 @@
     --color-card: var(--card);
     --color-foreground: var(--foreground);
     --color-background: var(--background);
+    --color-brand-panel: var(--brand-panel);
+    --color-brand-panel-border: var(--brand-panel-border);
+    --color-brand-surface: var(--brand-surface);
     --radius-sm: calc(var(--radius) * 0.6);
     --radius-md: calc(var(--radius) * 0.8);
     --radius-lg: var(--radius);
@@ -98,6 +101,16 @@
     --sidebar-accent-foreground: #fafafa;
     --sidebar-border: #27272a;
     --sidebar-ring: #3b82f6;
+
+    /*
+     * The auth brand panel. Mixed from --primary rather than given literal
+     * values, so the tint tracks the accent colour instead of drifting from it.
+     * The panel reads as a distinctly tinted surface against --background while
+     * staying dark enough for the workspace.
+     */
+    --brand-panel: color-mix(in oklab, var(--primary) 15%, var(--background));
+    --brand-panel-border: color-mix(in oklab, var(--primary) 28%, var(--border));
+    --brand-surface: color-mix(in oklab, var(--primary) 22%, transparent);
 }
 
 @layer base {

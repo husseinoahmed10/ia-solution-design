@@ -1,5 +1,6 @@
 "use client";
 
+import { UserButton } from "@clerk/nextjs";
 import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -12,8 +13,8 @@ interface EditorNavbarProps {
 }
 
 /**
- * Fixed-height chrome across the top of every editor screen. The centre and
- * right sections are intentionally empty until later units fill them.
+ * Fixed-height chrome across the top of every editor screen. The centre section
+ * is intentionally empty until a later unit fills it.
  */
 export function EditorNavbar({
   isSidebarOpen,
@@ -43,7 +44,10 @@ export function EditorNavbar({
 
       <div className="flex flex-1 items-center justify-center gap-2" />
 
-      <div className="flex flex-1 items-center justify-end gap-2" />
+      <div className="flex flex-1 items-center justify-end gap-2">
+        {/* Clerk's own menu — profile settings and sign-out, left as built. */}
+        <UserButton />
+      </div>
     </header>
   );
 }
