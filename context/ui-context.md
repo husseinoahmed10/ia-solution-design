@@ -51,6 +51,26 @@ defined even where the application does not use them yet.
 | Input border | `--input` | `#27272A` |
 | Focus ring | `--ring` | `#3B82F6` |
 
+### Derived brand tokens
+
+The auth brand panel needs a surface that is clearly
+distinct from `--background` without introducing a second
+accent colour. These tokens are therefore **mixed from
+`--primary`** with `color-mix(in oklab, …)` rather than
+given literal values, so the tint follows the accent instead
+of drifting from it. Prefer this pattern over adding new hex
+values when a surface is a variation on an existing one.
+
+| Role | CSS variable | Definition |
+| --- | --- | --- |
+| Brand panel surface | `--brand-panel` | `--primary` 15% into `--background` |
+| Brand panel border | `--brand-panel-border` | `--primary` 28% into `--border` |
+| Tinted icon surface | `--brand-surface` | `--primary` 22% into `transparent` |
+
+They are exposed to Tailwind in `@theme inline` as
+`bg-brand-panel`, `border-brand-panel-border`, and
+`bg-brand-surface`.
+
 Sidebar tokens (`--sidebar`, `--sidebar-foreground`,
 `--sidebar-primary`, `--sidebar-accent`,
 `--sidebar-border`, `--sidebar-ring`) mirror the core
@@ -66,7 +86,38 @@ Canvas component colours may vary by component category, but they must be define
 | Interface text | Geist Sans | `--font-geist-sans` |
 | Technical values | Geist Mono | `--font-geist-mono` |
 
+Both are loaded with `next/font/google` in
+`app/layout.tsx`, which sets the two variables on `<html>`.
+`app/globals.css` maps `--font-sans`, `--font-heading`, and
+`--font-mono` onto them in `@theme inline`, and `html` gets
+`@apply font-sans`, so Geist Sans is inherited everywhere
+without a per-component font class.
+
 Use normal sentence case. Avoid excessive uppercase labels.
+
+### Scale
+
+Hierarchy comes from size and weight on the same family,
+not from a second typeface.
+
+| Role | Classes |
+| --- | --- |
+| Panel headline | `text-4xl font-semibold tracking-tight` |
+| Section and card title | `text-base font-semibold tracking-tight` |
+| Body copy | `text-base` or `text-sm leading-relaxed` |
+| Supporting label | `text-sm font-semibold tracking-tight` |
+| Footnote | `text-xs` |
+
+Tighten `tracking-tight` on headings and semibold labels
+only — Geist already sits comfortably at body sizes. Use
+`text-balance` on headlines and `text-pretty` on paragraphs
+so wrapping stays even.
+
+Clerk's components default to a `0.8125rem` base, which
+reads smaller than the surrounding interface, so
+`lib/clerk-appearance.ts` sets `fontSize: "0.875rem"` to
+match the application's `text-sm`. Clerk derives its own
+xs–xl steps from that one value.
 
 ## Border Radius
 
@@ -130,6 +181,42 @@ a trigger with `asChild` rather than a `render` prop:
 
 Merge incoming class names with the `cn()` helper from
 `lib/utils.ts` so callers can override styles predictably.
+
+## Clerk Components
+
+Clerk's pre-built components are themed once, in `lib/clerk-appearance.ts`, and
+passed to `ClerkProvider` in `app/layout.tsx`. Individual pages do not restyle
+them.
+
+The base is Clerk's `dark` theme from `@clerk/ui/themes`. Every override is a
+`var(--token)` reference to the palette above, never a literal colour, so Clerk
+surfaces follow the same tokens as the rest of the interface — `--card` for the
+card, `--secondary` for inputs, `--primary` for the submit button, `--radius`
+for the shape, and the Geist font variables for type.
+
+Keep Clerk's default user menu and profile flows as built. Do not rebuild them.
+
+## Auth Pages
+
+Sign-in and sign-up share one layout: a split screen, kept professional rather
+than decorative — no gradients, no imagery, no feature cards, and no page
+scrolling.
+
+- **Large screens (`lg` and above)** — two exactly equal halves. Both grid
+  tracks are `minmax(0, 1fr)`, so neither half can widen itself to fit its
+  content and the split stays 50/50 at every width.
+  - The **left half** is the brand panel on `bg-brand-panel`, with a
+    `border-brand-panel-border` edge, so it reads as a tinted surface against
+    the near-black `--background` the form sits on. It is a three-part column
+    (`justify-between`): the wordmark at the top, the headline block and
+    feature list in the middle, and a quiet footnote at the bottom.
+  - Each feature is a row: a `size-9` `rounded-lg` `bg-brand-surface` square
+    holding a `text-primary` Lucide icon, then a semibold title with a muted
+    description beneath it.
+  - The **right half** holds the centred Clerk form on `--background`, so the
+    card reads as a raised `--card` surface.
+- **Below `lg`** — the brand panel is dropped with `hidden lg:flex` and only
+  the centred form remains.
 
 ## Main Layout
 
