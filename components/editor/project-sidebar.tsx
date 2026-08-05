@@ -10,11 +10,17 @@ import {
   TabsList,
   TabsTrigger,
 } from "@/components/ui/tabs";
+import { ProjectListItem } from "@/features/projects/project-list-item";
+import type { ProjectSummary } from "@/features/projects/project-types";
 import { cn } from "@/lib/utils";
 
 interface ProjectSidebarProps {
   isOpen: boolean;
   onClose: () => void;
+  projects: ProjectSummary[];
+  onCreateProject: () => void;
+  onRenameProject: (project: ProjectSummary) => void;
+  onDeleteProject: (project: ProjectSummary) => void;
   className?: string;
 }
 
@@ -25,8 +31,19 @@ interface ProjectSidebarProps {
 export function ProjectSidebar({
   isOpen,
   onClose,
+  projects,
+  onCreateProject,
+  onRenameProject,
+  onDeleteProject,
   className,
 }: ProjectSidebarProps) {
+  const ownedProjects = projects.filter(
+    (project) => project.access === "owner"
+  );
+  const sharedProjects = projects.filter(
+    (project) => project.access === "collaborator"
+  );
+
   return (
     <aside
       aria-label="Projects"
@@ -58,23 +75,49 @@ export function ProjectSidebar({
 
         <TabsContent value="my-projects" className="min-h-0">
           <ScrollArea className="h-full">
-            <p className="px-1 py-6 text-center text-sm text-muted-foreground">
-              No projects yet.
-            </p>
+            {ownedProjects.length > 0 ? (
+              <ul className="flex flex-col gap-0.5">
+                {ownedProjects.map((project) => (
+                  <ProjectListItem
+                    key={project.id}
+                    project={project}
+                    onRename={onRenameProject}
+                    onDelete={onDeleteProject}
+                  />
+                ))}
+              </ul>
+            ) : (
+              <p className="px-1 py-6 text-center text-sm text-muted-foreground">
+                No projects yet.
+              </p>
+            )}
           </ScrollArea>
         </TabsContent>
 
         <TabsContent value="shared" className="min-h-0">
           <ScrollArea className="h-full">
-            <p className="px-1 py-6 text-center text-sm text-muted-foreground">
-              No projects have been shared with you.
-            </p>
+            {sharedProjects.length > 0 ? (
+              <ul className="flex flex-col gap-0.5">
+                {sharedProjects.map((project) => (
+                  <ProjectListItem
+                    key={project.id}
+                    project={project}
+                    onRename={onRenameProject}
+                    onDelete={onDeleteProject}
+                  />
+                ))}
+              </ul>
+            ) : (
+              <p className="px-1 py-6 text-center text-sm text-muted-foreground">
+                No projects have been shared with you.
+              </p>
+            )}
           </ScrollArea>
         </TabsContent>
       </Tabs>
 
       <div className="shrink-0 border-t border-border p-3">
-        <Button className="w-full">
+        <Button className="w-full" onClick={onCreateProject}>
           <Plus data-icon="inline-start" />
           New Project
         </Button>

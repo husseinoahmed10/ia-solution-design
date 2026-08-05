@@ -14,11 +14,22 @@ User Prompt: $ARGUMENTS
 
 Before ANY POST / PATCH / PUT / DELETE, you MUST do ALL of the following in your response:
 
-1. **Check CLERK_SECRET_KEY** — verify it is set:
+1. **Check CLERK_SECRET_KEY** — verify it is set and is a test key, without printing it:
    ```bash
-   echo $CLERK_SECRET_KEY | head -c 10
+   case "$CLERK_SECRET_KEY" in
+     sk_test_*) echo "secret key: set (test)" ;;
+     sk_live_*) echo "secret key: set (LIVE — production instance)" ;;
+     "")        echo "secret key: NOT SET" ;;
+     *)         echo "secret key: set (unrecognized prefix)" ;;
+   esac
    ```
-   If empty, stop and ask the user. Do not proceed without a valid key.
+   Never echo the key itself, and never a prefix of it — `head -c`/`cut` still
+   leak characters into the transcript and any log that captures it. The check
+   above reports only which category the key falls into.
+
+   If it is not set, stop and ask the user. Do not proceed without a valid key.
+   If it is a **live** key, stop and confirm with the user before any write —
+   these operations hit real user data.
 
 2. **Check CLERK_BAPI_SCOPES** — run:
    ```bash
