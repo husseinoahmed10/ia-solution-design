@@ -237,6 +237,53 @@ The application uses two main views.
 
 On smaller screens, side panels become drawers. The canvas is primarily designed for desktop use.
 
+### Editor canvas
+
+The canvas region is a flex container and `<main>` is
+`min-h-0 flex-1`, so page content can fill it. Do not use a
+percentage height such as `h-full` on `main` — the region is
+itself a flex item with an auto height, so the percentage
+does not resolve and the content collapses to its own height.
+
+The editor home — what a user sees before a project is open —
+is centred, plain, and **not** wrapped in a card: a
+`text-4xl` headline, a short muted paragraph, and the single
+primary action.
+
+### Project sidebar
+
+Projects are split across the two tabs by access: owned
+projects under `My Projects`, collaborator projects under
+`Shared`. Each row shows its rename and delete actions on
+hover **and** on keyboard focus (`group-hover` plus
+`group-focus-within`), and a row the user does not own
+renders no actions at all rather than hiding them.
+
+Below `sm` an open sidebar is backed by a scrim that dims the
+canvas and closes the panel when tapped. There is no scrim at
+`sm` and above, where the panel is a non-blocking overlay and
+the canvas stays clickable.
+
+## Dialogs
+
+Every editor dialog is built on `EditorDialog`, which wraps
+the `Dialog` primitive with a title, an optional description,
+a body, and footer actions.
+
+- The footer is cancel plus one primary action. `DialogFooter`
+  already provides the border, the `bg-muted/50` strip, and
+  `justify-end`, so it needs only the buttons. Cancel is an
+  outline `Button` inside `DialogClose asChild`, so
+  dismissing requires no state.
+- A dialog with an input wraps it in a `<form>` and gives the
+  footer button `type="submit"` with a matching `form`
+  attribute, so Enter submits from the field.
+- A destructive confirmation carries no input. The project or
+  record is already identified by the action that opened it,
+  and the confirm button uses `variant="destructive"`.
+- Name the affected record in the description rather than in
+  the title, so the title stays a stable label.
+
 ## Interaction Rules
 
 - Always show loading, empty, success, and error states.

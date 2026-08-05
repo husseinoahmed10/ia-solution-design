@@ -9,10 +9,9 @@ change.
 
 ## Current Goal
 
-- Unit 03 — Authentication
-  (`context/feature-specs/03-auth.md`) — complete,
-  including the auth-page visual refresh. Awaiting the next
-  feature specification.
+- Unit 04 — Editor home and project dialogs
+  (`context/feature-specs/04-project-dialogs.md`) —
+  complete. Awaiting the next feature specification.
 
 ## Completed
 
@@ -200,15 +199,111 @@ change.
     page scrolls. No element carries an inline hardcoded
     colour, and there are no console or page errors.
 
+- Unit 04 — Editor home and project dialogs:
+  - Added the first `features/` module,
+    `features/projects/`: `project-types.ts` (the
+    `ProjectSummary` contract and the `ProjectAccess`
+    union), `project-slug.ts` (`toProjectSlug()`, which
+    lower-cases and collapses every run of
+    non-alphanumeric characters to one hyphen), and
+    `mock-projects.ts` — three placeholder projects, two
+    owned and one collaborator.
+  - Added `use-project-dialogs.ts`, the single hook holding
+    which dialog is open, the name being typed, the derived
+    `slugPreview`, and `isSubmitting`. Its `setDialogOpen`
+    matches Radix's `onOpenChange` contract so a dismiss
+    clears the form, and `canSubmitName` rejects a
+    whitespace-only name. `confirm()` currently only
+    manages the loading state and closes — it is where the
+    mutation goes once the project API exists.
+  - Added `project-dialogs-context.tsx` so the one hook
+    instance held by the shell reaches the screens inside
+    it. Without it, `app/(editor)/editor/page.tsx` would
+    have needed its own copy and the sidebar and the home
+    screen would have opened different dialogs.
+  - Added the three dialogs on the existing `EditorDialog`
+    pattern: `create-project-dialog.tsx` (name input plus a
+    live `font-mono` slug preview), `rename-project-dialog.tsx`
+    (prefilled and `autoFocus`, current name in the
+    description, wrapped in a `<form>` so Enter submits),
+    and `delete-project-dialog.tsx` (no input, no body — a
+    `variant="destructive"` confirm and the project named in
+    the description).
+  - Added `project-list-item.tsx`: one sidebar row, with
+    rename and delete rendered **only** for
+    `access === "owner"`. The actions are absent from the
+    DOM for a collaborator rather than hidden, so they
+    cannot be tabbed to, and they reveal on
+    `group-hover` *and* `group-focus-within` so keyboard
+    users can see them.
+  - Extended `project-sidebar.tsx` to split the projects by
+    access across the two existing tabs and to take
+    `onCreateProject`, `onRenameProject`, and
+    `onDeleteProject`. It stays presentational — it holds no
+    dialog state.
+  - Added `features/projects/editor-home.tsx` and reduced
+    `app/(editor)/editor/page.tsx` to rendering it. Heading,
+    description, and a `Plus` `New Project` button, centred
+    and deliberately not in a card.
+  - Wired the mobile backdrop scrim in `editor-shell.tsx`:
+    `sm:hidden`, so it exists only where the panel covers
+    most of the screen. On `sm` and up there is no scrim and
+    the canvas stays clickable.
+  - Fixed the canvas height chain in `editor-shell.tsx`. The
+    canvas region is now `flex` and `<main>` is
+    `min-h-0 flex-1` instead of `h-full`. A percentage
+    height could not resolve there — the region is itself a
+    flex item with an auto height — so `main` collapsed to
+    its content and the centred home content sat at the top
+    of the canvas rather than in the middle.
+  - Verified: `tsc --noEmit`, `npm run lint`, and
+    `npm run build` all pass, with the same five routes and
+    `ƒ Proxy (Middleware)`. Drove a real signed-in session
+    over CDP — 27 checks, all passing: the heading and
+    description match the specification exactly, the content
+    is not inside a `data-slot="card"`, and after the height
+    fix `main` measures the full 749px canvas with the
+    heading centred at y=354. Typing `Claims Triage 2!` one
+    character at a time produced 13 distinct slug previews
+    ending at `claims-triage-2`. Both home and sidebar
+    create actions open an empty create dialog; rename opens
+    prefilled with `Invoice Intake Automation`, focused, and
+    Enter closes it; delete has no input and its confirm
+    computes to `rgb(239, 68, 68)`. The Shared tab shows one
+    project with zero action buttons, My Projects shows two
+    each with both. At 390px the scrim covers the canvas at
+    `oklab(0 0 0 / 0.5)` and tapping at x=318 — outside the
+    288px panel — closes the sidebar; at 1440px no scrim is
+    present. No console errors and no failed application
+    requests.
+  - Followed up on an external review pass over the branch.
+    Fixed `EditorDialog`, which rendered its optional
+    `trigger` as a bare child of `Dialog`: a trigger passed
+    that way would not have opened the dialog, because Radix
+    needs `DialogTrigger` to wire the click and the
+    `aria-controls`/`aria-expanded` pair. It is now wrapped
+    in `<DialogTrigger asChild>`. No caller passes `trigger`
+    yet — all three project dialogs are controlled through
+    the hook — so this was latent rather than a live defect,
+    and the fix keeps the prop honest for the first caller
+    that uses it.
+  - The rest of that review pass concerned the vendored Clerk
+    skills under `.agents/skills/`, which are third-party
+    files pinned by hash in `skills-lock.json` and are left
+    unmodified. Its line-ending findings were false
+    positives: `core.autocrlf=true` means the working copy is
+    CRLF while the git index is already LF.
+
 ## In Progress
 
 - None.
 
 ## Next Up
 
-- The first concrete dialog (for example New Project)
-  built on the dialog pattern, once its feature
-  specification exists.
+- Persistence for the project dialogs — Prisma `Project`
+  records, server-side access checks, and real mutations
+  replacing the mock data, once its feature specification
+  exists.
 - Centre workspace and right properties panel, per the
   Main Layout section of `ui-context.md`, once their
   feature specifications exist.
@@ -309,6 +404,46 @@ change.
   Use the same approach for any future surface that is a
   variation on a token that already exists, rather than
   extending the core palette.
+- **Project code lives in `features/projects/`, not
+  `components/`.** The dialogs, the sidebar row, the slug
+  helper, and the dialog hook all carry project domain
+  meaning, so they sit under `features/` per the
+  file-organisation rules in `code-standards.md`. The
+  chrome that merely *hosts* them — navbar, sidebar shell,
+  `EditorDialog` — stays in `components/editor/`. The
+  sidebar therefore imports a feature component while
+  staying presentational itself.
+- **One hook owns all three dialogs, shared through
+  context.** `useProjectDialogs` holds a single
+  `{ mode, project }` value rather than three booleans, so
+  two dialogs cannot be open at once and prefilling the
+  rename form happens in the same place that opens it. The
+  instance is mounted once in `EditorShell` and passed down
+  through `ProjectDialogsProvider`, because the sidebar
+  (inside the shell) and the editor home (inside
+  `children`) must drive the *same* dialogs — a second
+  `useProjectDialogs()` call in the page would open a
+  second, unrelated set.
+- **Owned-only actions are omitted from the DOM, not
+  hidden.** A collaborator row renders no rename or delete
+  button at all, so the controls cannot be reached by
+  keyboard or by a script toggling CSS. This is a UI
+  affordance only: it is not an access control, and the
+  server-side ownership check required by invariant 6 still
+  has to be written when the mutations land.
+- **The mobile scrim is `sm:hidden`.** The sidebar is a
+  non-modal overlay by an earlier decision, so a scrim at
+  every width would block the canvas it deliberately floats
+  above. Below `sm` the panel covers most of the screen and
+  there is nothing useful left to click, so the scrim is
+  added there only — it dims the canvas and gives the user
+  somewhere to tap to dismiss.
+- **The canvas region is a flex container.** `<main>` is
+  `min-h-0 flex-1`, not `h-full`. A percentage height does
+  not resolve against a flex item with an auto height, so
+  `h-full` left `main` at its content height and any page
+  centring itself with `h-full` appeared at the top of the
+  canvas. Page content can now rely on filling the canvas.
 - **Radius follows the generated primitives.** The earlier
   `ui-context.md` radius table conflicted with the shadcn
   defaults. Rather than restyle protected files in
@@ -391,6 +526,42 @@ change.
   module format (CommonJs) is not matching the module format
   of the source code (EcmaScript Modules)" and returns 500
   for every route. Never run it in the project root.
+- `DialogFooter` already supplies `justify-end`, a top
+  border, and a `bg-muted/50` strip, so a footer only needs
+  the buttons themselves. Pair `DialogClose asChild` with an
+  outline `Button` for cancel, so dismissing needs no state
+  change.
+- A submit button outside a `<form>` still submits it via
+  `form="<form-id>"`. That is how the dialogs get Enter-to-
+  submit while keeping the actions in `DialogFooter`, which
+  Radix renders as a sibling of the body.
+- Radix `Tabs` keeps the inactive `TabsContent` mounted, so
+  a query across the whole `<aside>` returns rows from both
+  tabs. Scope to
+  `[role="tabpanel"][data-state="active"]` when asserting on
+  the visible list. `TabsTrigger` also exposes no `value`
+  attribute in the DOM — target it by
+  `aria-controls$="-content-<value>"`.
+- The Clerk development instance for this project **requires
+  a username**. `signUp.create({ emailAddress, password })`
+  stalls without one, and the Backend API returns
+  `form_data_missing` for `["username"]`. Any scripted
+  sign-up must send a username.
+- To create a signed-in browser session for verification,
+  mint a `/v1/sign_in_tokens` ticket with the Backend API and
+  open `/sign-in?__clerk_ticket=<token>`. This is far more
+  reliable than driving Clerk's form, and the throwaway user
+  should be deleted afterwards.
+- Clerk's browser telemetry endpoint
+  (`clerk-telemetry.com/v1/event`) is blocked on this
+  network and logs a stream of `ERR_CONNECTION_RESET`
+  entries. They are not application errors — filter failed
+  requests to `localhost:3000` before judging console
+  health.
+- Dispatching Enter over CDP needs `text: "\r"` on the
+  `keyDown`. A bare `keyDown`/`keyUp` pair with only `key`
+  and `windowsVirtualKeyCode` does not trigger a form's
+  implicit submission, which reads as a broken feature.
 - In development Clerk answers the first request per
   browser with a 307 to its `/v1/client/handshake`
   endpoint to set the dev-browser cookie. Use a cookie jar

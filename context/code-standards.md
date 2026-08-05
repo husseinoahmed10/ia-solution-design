@@ -45,6 +45,8 @@
 - Use the CSS variables and layout rules in `ui-context.md`.
 - Keep business logic out of presentational components.
 - Provide keyboard labels and accessible names for interactive controls.
+- Keep shared state in one hook and pass it down. Where a component inside a layout and a component inside `children` must drive the same state, mount the hook once in the layout component and share it with a small context rather than calling the hook twice.
+- Hide an action the current user may not take by not rendering it, rather than by hiding it with CSS, so it stays out of the tab order. This is an affordance only and never replaces the server-side access check.
 
 ## File Organisation
 

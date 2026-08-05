@@ -9,6 +9,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  DialogTrigger,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 
@@ -39,7 +40,7 @@ export function EditorDialog({
 }: EditorDialogProps) {
   return (
     <Dialog {...dialogProps}>
-      {trigger}
+      {trigger ? <DialogTrigger asChild>{trigger}</DialogTrigger> : null}
       <DialogContent className={cn("sm:max-w-md", contentClassName)}>
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
