@@ -103,7 +103,9 @@ Use the **direct** connection string (`endpoints.direct.connectionString`). Do n
 
 If the response status is `provisioning`, wait a few seconds and poll `GET /v1/databases/<database-id>` until `status` is `ready`.
 
-**If creation fails due to a database limit**, list the user's existing projects and present them as an interactive menu for deletion. After the user picks one, delete it and retry.
+**If creation fails due to a database limit**, list the user's existing projects and present them as an interactive menu for deletion. Show each option's project name and ID alongside its database ID, and state plainly that deleting a project **permanently destroys its database and all data in it**.
+
+After the user picks one, do **not** delete immediately. Echo back the selected project name, project ID, and database ID, and require a separate explicit confirmation of the destructive action. Only then call the delete endpoint and retry project creation. If the user declines, stop and let them free capacity in the Console instead.
 
 Read `references/endpoints.md` for the full request/response shapes.
 
@@ -163,7 +165,6 @@ import { defineConfig } from 'prisma/config'
 import 'dotenv/config'
 
 export default defineConfig({
-  earlyAccess: true,
   schema: path.join(import.meta.dirname, 'prisma', 'schema.prisma'),
   datasource: {
     url: process.env.DATABASE_URL!,

@@ -91,4 +91,11 @@ Use a driver adapter for the standard SQL workflow.
 - Ensure TCP/IP is enabled in SQL Server Configuration Manager.
 
 ### "Table not found" (dbo schema)
-Prisma assumes `dbo` schema by default. If using another schema, update the model or connection string? SQL Server provider mostly sticks to default schema.
+
+Prisma resolves unqualified table names against the `dbo` schema by default. If your tables live in another schema, add `schema=<name>` to the semicolon-delimited connection URL:
+
+```env
+DATABASE_URL="sqlserver://localhost:1433;database=mydb;schema=sales;user=sa;password=Password123;encrypt=true;trustServerCertificate=true"
+```
+
+Use the **same** schema when creating migrations and when deploying to production. A migration generated against one schema and deployed against another will not find its tables.
