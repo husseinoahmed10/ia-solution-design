@@ -74,6 +74,7 @@ bun add create-db
 Create a database:
 
 ```ts
+import { writeFile } from "node:fs/promises";
 import { create, isDatabaseSuccess, isDatabaseError } from "create-db";
 
 const result = await create({
@@ -82,9 +83,14 @@ const result = await create({
 });
 
 if (isDatabaseSuccess(result)) {
-  console.log(result.connectionString);
   console.log(result.claimUrl);
   console.log(result.deletionDate);
+
+  // `result.connectionString` is a credential. Never log or print it.
+  // Write it to a protected secret store or an ignored env file instead:
+  await writeFile(".env", `DATABASE_URL="${result.connectionString}"\n`, {
+    flag: "a",
+  });
 }
 
 if (isDatabaseError(result)) {
