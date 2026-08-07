@@ -4,28 +4,31 @@ import { EditorDialog } from "@/components/editor/editor-dialog";
 import { Button } from "@/components/ui/button";
 import { DialogClose } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import type { ProjectDialogsController } from "@/features/projects/use-project-dialogs";
+import { ProjectDialogError } from "@/features/projects/project-dialog-error";
+import type { ProjectActionsController } from "@/hooks/use-project-actions";
 
 interface CreateProjectDialogProps {
-  dialogs: ProjectDialogsController;
+  projectActions: ProjectActionsController;
 }
 
 /**
- * Names a new project and previews the slug it will be given. The preview is
- * derived from the name on every keystroke, so the user can see the identifier
- * before committing to the name.
+ * Names a new project, then opens it. The project's identifier is assigned by the
+ * server and returned in the response, so there is nothing derived from the name
+ * to preview here.
  */
-export function CreateProjectDialog({ dialogs }: CreateProjectDialogProps) {
+export function CreateProjectDialog({
+  projectActions,
+}: CreateProjectDialogProps) {
   const {
     mode,
     name,
     setName,
-    slugPreview,
     canSubmitName,
     isSubmitting,
+    error,
     setDialogOpen,
-    confirm,
-  } = dialogs;
+    submitCreate,
+  } = projectActions;
 
   return (
     <EditorDialog
@@ -36,14 +39,16 @@ export function CreateProjectDialog({ dialogs }: CreateProjectDialogProps) {
       footer={
         <>
           <DialogClose asChild>
-            <Button variant="outline">Cancel</Button>
+            <Button variant="outline" disabled={isSubmitting}>
+              Cancel
+            </Button>
           </DialogClose>
           <Button
             type="submit"
             form="create-project-form"
             disabled={!canSubmitName || isSubmitting}
           >
-            Create project
+            {isSubmitting ? "Creating…" : "Create project"}
           </Button>
         </>
       }
@@ -53,9 +58,7 @@ export function CreateProjectDialog({ dialogs }: CreateProjectDialogProps) {
         className="flex flex-col gap-2"
         onSubmit={(event) => {
           event.preventDefault();
-          if (canSubmitName) {
-            confirm();
-          }
+          void submitCreate();
         }}
       >
         <label
@@ -69,15 +72,11 @@ export function CreateProjectDialog({ dialogs }: CreateProjectDialogProps) {
           value={name}
           autoFocus
           autoComplete="off"
+          disabled={isSubmitting}
           placeholder="Invoice Intake Automation"
           onChange={(event) => setName(event.target.value)}
         />
-        <p className="text-xs text-muted-foreground">
-          Slug:{" "}
-          <span className="font-mono text-foreground">
-            {slugPreview || "—"}
-          </span>
-        </p>
+        <ProjectDialogError error={error} />
       </form>
     </EditorDialog>
   );

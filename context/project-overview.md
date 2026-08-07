@@ -86,7 +86,7 @@ IA Solution Design is an AI-assisted web application for Intelligent Automation 
 - Automatically creating or deploying WorkHQ workflows.
 - Automatically creating or deploying Blue Prism processes or objects.
 - Production credentials or production-system access.
-- Real-time multi-user canvas editing in the MVP.
+- Real-time multi-user *canvas editing* in the MVP. A Liveblocks room is created and deleted alongside each project, so the workspace identity and its room stay aligned from the start, but no canvas state is synchronised through it yet.
 - Word or PDF export in the MVP.
 - A general-purpose architecture tool for technologies outside Intelligent Automation.
 

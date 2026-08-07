@@ -1,0 +1,40 @@
+/// A solution design workspace owned by a single Clerk user.
+model Project {
+  id             String        @id @default(uuid(7))
+  /// The Clerk user ID of the owner. Clerk is the user store, so there is no
+  /// local User table to relate to.
+  ownerId        String
+  name           String
+  description    String?
+  status         ProjectStatus @default(DRAFT)
+  /// Blob storage path for the WorkHQ and Design Studio architecture canvas
+  /// JSON. Null until a canvas has been saved.
+  canvasJsonPath String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  collaborators ProjectCollaborator[]
+
+  @@index([ownerId])
+  @@index([createdAt])
+}
+
+enum ProjectStatus {
+  DRAFT
+  ARCHIVED
+}
+
+/// A user invited to a project by email address. The invitee may not have a
+/// Clerk account yet, so the email is the identity here rather than a user ID.
+model ProjectCollaborator {
+  id        String   @id @default(uuid(7))
+  projectId String
+  email     String
+  createdAt DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, email])
+  @@index([email])
+  @@index([projectId, createdAt])
+}

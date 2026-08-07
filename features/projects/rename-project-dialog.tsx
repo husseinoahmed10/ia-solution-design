@@ -4,17 +4,23 @@ import { EditorDialog } from "@/components/editor/editor-dialog";
 import { Button } from "@/components/ui/button";
 import { DialogClose } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import type { ProjectDialogsController } from "@/features/projects/use-project-dialogs";
+import { ProjectDialogError } from "@/features/projects/project-dialog-error";
+import type { ProjectActionsController } from "@/hooks/use-project-actions";
 
 interface RenameProjectDialogProps {
-  dialogs: ProjectDialogsController;
+  projectActions: ProjectActionsController;
 }
 
 /**
  * Renames an existing project. The input opens prefilled with the current name
  * and focused, and Enter submits, so a rename is a single keyboard interaction.
+ *
+ * A rename changes the name only: the project keeps its ID, and so its workspace
+ * route and its Liveblocks room are untouched.
  */
-export function RenameProjectDialog({ dialogs }: RenameProjectDialogProps) {
+export function RenameProjectDialog({
+  projectActions,
+}: RenameProjectDialogProps) {
   const {
     mode,
     activeProject,
@@ -22,9 +28,10 @@ export function RenameProjectDialog({ dialogs }: RenameProjectDialogProps) {
     setName,
     canSubmitName,
     isSubmitting,
+    error,
     setDialogOpen,
-    confirm,
-  } = dialogs;
+    submitRename,
+  } = projectActions;
 
   return (
     <EditorDialog
@@ -42,14 +49,16 @@ export function RenameProjectDialog({ dialogs }: RenameProjectDialogProps) {
       footer={
         <>
           <DialogClose asChild>
-            <Button variant="outline">Cancel</Button>
+            <Button variant="outline" disabled={isSubmitting}>
+              Cancel
+            </Button>
           </DialogClose>
           <Button
             type="submit"
             form="rename-project-form"
             disabled={!canSubmitName || isSubmitting}
           >
-            Save name
+            {isSubmitting ? "Saving…" : "Save name"}
           </Button>
         </>
       }
@@ -59,9 +68,7 @@ export function RenameProjectDialog({ dialogs }: RenameProjectDialogProps) {
         className="flex flex-col gap-2"
         onSubmit={(event) => {
           event.preventDefault();
-          if (canSubmitName) {
-            confirm();
-          }
+          void submitRename();
         }}
       >
         <label
@@ -75,8 +82,10 @@ export function RenameProjectDialog({ dialogs }: RenameProjectDialogProps) {
           value={name}
           autoFocus
           autoComplete="off"
+          disabled={isSubmitting}
           onChange={(event) => setName(event.target.value)}
         />
+        <ProjectDialogError error={error} />
       </form>
     </EditorDialog>
   );

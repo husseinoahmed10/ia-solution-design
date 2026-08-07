@@ -30,3 +30,18 @@ export function isPublicPath(pathname: string): boolean {
     (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)
   );
 }
+
+/** Where the route handlers live. */
+const API_PATH_PREFIX = "/api";
+
+/**
+ * True for a route handler path.
+ *
+ * These are not public. They are excluded from the proxy's `auth.protect()`
+ * because `protect()` answers a non-page request by rewriting to a 404, while an
+ * API caller must be told `401`. Each handler reads `await auth()` itself and
+ * returns its own status code, which invariant 6 requires of them regardless.
+ */
+export function isApiPath(pathname: string): boolean {
+  return pathname === API_PATH_PREFIX || pathname.startsWith(`${API_PATH_PREFIX}/`);
+}
