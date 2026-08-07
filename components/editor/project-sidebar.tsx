@@ -17,7 +17,13 @@ import { cn } from "@/lib/utils";
 interface ProjectSidebarProps {
   isOpen: boolean;
   onClose: () => void;
-  projects: ProjectSummary[];
+  /**
+   * The two lists arrive already separated, because they come from two different
+   * queries: a project is owned or shared according to which one returned it,
+   * not according to a field the panel could filter on.
+   */
+  ownedProjects: ProjectSummary[];
+  sharedProjects: ProjectSummary[];
   onCreateProject: () => void;
   onRenameProject: (project: ProjectSummary) => void;
   onDeleteProject: (project: ProjectSummary) => void;
@@ -31,19 +37,13 @@ interface ProjectSidebarProps {
 export function ProjectSidebar({
   isOpen,
   onClose,
-  projects,
+  ownedProjects,
+  sharedProjects,
   onCreateProject,
   onRenameProject,
   onDeleteProject,
   className,
 }: ProjectSidebarProps) {
-  const ownedProjects = projects.filter(
-    (project) => project.access === "owner"
-  );
-  const sharedProjects = projects.filter(
-    (project) => project.access === "collaborator"
-  );
-
   return (
     <aside
       aria-label="Projects"

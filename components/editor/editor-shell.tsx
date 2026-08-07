@@ -6,12 +6,15 @@ import { EditorNavbar } from "@/components/editor/editor-navbar";
 import { ProjectSidebar } from "@/components/editor/project-sidebar";
 import { CreateProjectDialog } from "@/features/projects/create-project-dialog";
 import { DeleteProjectDialog } from "@/features/projects/delete-project-dialog";
-import { mockProjects } from "@/features/projects/mock-projects";
-import { ProjectDialogsProvider } from "@/features/projects/project-dialogs-context";
+import { ProjectActionsProvider } from "@/features/projects/project-actions-context";
+import type { ProjectSummary } from "@/features/projects/project-types";
 import { RenameProjectDialog } from "@/features/projects/rename-project-dialog";
-import { useProjectDialogs } from "@/features/projects/use-project-dialogs";
+import { useProjectActions } from "@/hooks/use-project-actions";
 
 interface EditorShellProps {
+  /** Fetched server-side by the editor layout, not by the sidebar. */
+  ownedProjects: ProjectSummary[];
+  sharedProjects: ProjectSummary[];
   children?: ReactNode;
 }
 
@@ -23,14 +26,18 @@ interface EditorShellProps {
  * The project dialogs are mounted here, once, and shared through context, so a
  * screen inside the shell opens the same dialog instances the sidebar does.
  */
-export function EditorShell({ children }: EditorShellProps) {
+export function EditorShell({
+  ownedProjects,
+  sharedProjects,
+  children,
+}: EditorShellProps) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const dialogs = useProjectDialogs();
+  const projectActions = useProjectActions();
 
   const closeSidebar = () => setIsSidebarOpen(false);
 
   return (
-    <ProjectDialogsProvider dialogs={dialogs}>
+    <ProjectActionsProvider projectActions={projectActions}>
       <div className="flex min-h-0 flex-1 flex-col">
         <EditorNavbar
           isSidebarOpen={isSidebarOpen}
@@ -63,17 +70,18 @@ export function EditorShell({ children }: EditorShellProps) {
           <ProjectSidebar
             isOpen={isSidebarOpen}
             onClose={closeSidebar}
-            projects={mockProjects}
-            onCreateProject={dialogs.openCreateDialog}
-            onRenameProject={dialogs.openRenameDialog}
-            onDeleteProject={dialogs.openDeleteDialog}
+            ownedProjects={ownedProjects}
+            sharedProjects={sharedProjects}
+            onCreateProject={projectActions.openCreateDialog}
+            onRenameProject={projectActions.openRenameDialog}
+            onDeleteProject={projectActions.openDeleteDialog}
           />
         </div>
       </div>
 
-      <CreateProjectDialog dialogs={dialogs} />
-      <RenameProjectDialog dialogs={dialogs} />
-      <DeleteProjectDialog dialogs={dialogs} />
-    </ProjectDialogsProvider>
+      <CreateProjectDialog projectActions={projectActions} />
+      <RenameProjectDialog projectActions={projectActions} />
+      <DeleteProjectDialog projectActions={projectActions} />
+    </ProjectActionsProvider>
   );
 }

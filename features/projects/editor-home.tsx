@@ -3,7 +3,7 @@
 import { Plus } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { useProjectDialogsContext } from "@/features/projects/project-dialogs-context";
+import { useProjectActionsContext } from "@/features/projects/project-actions-context";
 
 /**
  * The empty editor canvas: what the user sees before a project is open. It is
@@ -11,7 +11,7 @@ import { useProjectDialogsContext } from "@/features/projects/project-dialogs-co
  * thing competing for attention.
  */
 export function EditorHome() {
-  const { openCreateDialog } = useProjectDialogsContext();
+  const { openCreateDialog } = useProjectActionsContext();
 
   return (
     <div className="flex h-full flex-col items-center justify-center gap-4 px-6 text-center">

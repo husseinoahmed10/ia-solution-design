@@ -3,19 +3,26 @@
 import { EditorDialog } from "@/components/editor/editor-dialog";
 import { Button } from "@/components/ui/button";
 import { DialogClose } from "@/components/ui/dialog";
-import type { ProjectDialogsController } from "@/features/projects/use-project-dialogs";
+import { ProjectDialogError } from "@/features/projects/project-dialog-error";
+import type { ProjectActionsController } from "@/hooks/use-project-actions";
 
 interface DeleteProjectDialogProps {
-  dialogs: ProjectDialogsController;
+  projectActions: ProjectActionsController;
 }
 
 /**
  * Confirms deleting a project. It carries no input — the project is already
  * identified by the sidebar action that opened it, so the only decision left is
  * whether to go ahead.
+ *
+ * The body appears only to report a failure, so the dialog stays open with the
+ * reason rather than closing on an action that did not happen.
  */
-export function DeleteProjectDialog({ dialogs }: DeleteProjectDialogProps) {
-  const { mode, activeProject, isSubmitting, setDialogOpen, confirm } = dialogs;
+export function DeleteProjectDialog({
+  projectActions,
+}: DeleteProjectDialogProps) {
+  const { mode, activeProject, isSubmitting, error, setDialogOpen, submitDelete } =
+    projectActions;
 
   return (
     <EditorDialog
@@ -34,13 +41,21 @@ export function DeleteProjectDialog({ dialogs }: DeleteProjectDialogProps) {
       footer={
         <>
           <DialogClose asChild>
-            <Button variant="outline">Cancel</Button>
+            <Button variant="outline" disabled={isSubmitting}>
+              Cancel
+            </Button>
           </DialogClose>
-          <Button variant="destructive" disabled={isSubmitting} onClick={confirm}>
-            Delete project
+          <Button
+            variant="destructive"
+            disabled={isSubmitting}
+            onClick={() => void submitDelete()}
+          >
+            {isSubmitting ? "Deleting…" : "Delete project"}
           </Button>
         </>
       }
-    />
+    >
+      {error ? <ProjectDialogError error={error} /> : null}
+    </EditorDialog>
   );
 }
