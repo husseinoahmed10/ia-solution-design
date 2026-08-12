@@ -30,3 +30,12 @@ export function forbiddenResponse(): Response {
 export function notFoundResponse(): Response {
   return errorResponse("Not found.", 404);
 }
+
+/**
+ * A valid request that conflicts with the current state — the record it would
+ * create already exists. Distinct from a `400`, because the input is well formed
+ * and the caller has nothing to correct.
+ */
+export function conflictResponse(error: string): Response {
+  return errorResponse(error, 409);
+}

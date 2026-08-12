@@ -1,49 +1,40 @@
-import { currentUser } from "@clerk/nextjs/server";
-import { notFound } from "next/navigation";
+import { redirect } from "next/navigation";
 
-import { findAccessibleProject } from "@/features/projects/project-service";
+import { AccessDenied } from "@/components/editor/access-denied";
+import { CanvasPlaceholder } from "@/components/editor/canvas-placeholder";
+import { SIGN_IN_URL } from "@/lib/auth-routes";
+import { resolveProjectAccess } from "@/lib/project-access";
 
 /**
  * A project workspace.
  *
- * This unit only wires the sidebar and the dialogs, so the canvas itself is not
- * built here — the route exists because creating a project navigates to it, and
- * it establishes where the workspace's server-side access check lives.
+ * A Server Component, so the access check runs before anything renders and no
+ * project data reaches the browser for a project the user may not open.
  *
  * `projectId` arrives from the URL, so it is caller-supplied and untrusted: the
- * project is loaded through an access check rather than fetched by ID
- * (`architecture.md`, invariant 6). A project that does not exist and one the
- * user may not open are both a `404`, so the page cannot be used to discover that
- * somebody else's project exists.
+ * project is loaded through `resolveProjectAccess`, which lives in
+ * `lib/project-access.ts` rather than here (`architecture.md`, invariant 6). A
+ * project that does not exist and one the user may not open both render
+ * `AccessDenied`, so the route cannot be used to discover that somebody else's
+ * project exists.
+ *
+ * The chrome around this — the navbar, the project sidebar, and the AI panel —
+ * comes from the `(editor)` layout, so this page contributes the canvas region
+ * only. It holds no canvas logic yet.
  */
 export default async function ProjectWorkspacePage({
   params,
 }: PageProps<"/editor/[projectId]">) {
   const { projectId } = await params;
-  const user = await currentUser();
+  const access = await resolveProjectAccess(projectId);
 
-  if (!user) {
-    notFound();
+  if (access.status === "unauthenticated") {
+    redirect(SIGN_IN_URL);
   }
 
-  const accessible = await findAccessibleProject(
-    projectId,
-    user.id,
-    user.primaryEmailAddress?.emailAddress ?? null
-  );
-
-  if (!accessible) {
-    notFound();
+  if (access.status === "denied") {
+    return <AccessDenied />;
   }
 
-  return (
-    <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
-      <h1 className="text-3xl font-semibold tracking-tight text-balance">
-        {accessible.project.name}
-      </h1>
-      <p className="max-w-md text-sm leading-relaxed text-pretty text-muted-foreground">
-        This workspace is ready. The architecture canvas arrives in a later unit.
-      </p>
-    </div>
-  );
+  return <CanvasPlaceholder />;
 }

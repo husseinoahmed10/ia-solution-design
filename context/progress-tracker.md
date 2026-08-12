@@ -9,6 +9,93 @@ change.
 
 ## Current Goal
 
+- **CodeRabbit review of the uncommitted units 08–09 changes
+  addressed (2026-08-12).** The review raised 259 comments, but
+  253 were against the vendored Prisma and Clerk skill
+  documentation under `.agents/`, `.claude/skills/`, and
+  `.windsurf/` — third-party content this project only carries,
+  so they were left alone. Six concerned our own code and were
+  each checked against the current files before any change:
+  - **`.claude/settings.json` auto-approved `Bash(npx prisma *)`
+    (critical).** That wildcard covers `migrate reset`,
+    `db push --accept-data-loss`, `db execute`, and `db seed` —
+    every destructive Prisma command — without a consent
+    prompt. Narrowed to six read-only or generate-only
+    subcommands. The same review's claim that the lockfile omits
+    `prisma` was checked and is **wrong**: it is present at
+    7.9.1 as a root dev dependency, so nothing was changed for
+    it.
+  - **An ambiguous room-create failure could strand a
+    Liveblocks room (major).** `POST /api/projects` deleted only
+    the project row when `createProjectRoom` threw, but a
+    timeout or lost response can mean the room *was* created.
+    The compensation now deletes the room before the row, and
+    drops the row only once that succeeds — so a failed cleanup
+    keeps the ID that names the room instead of orphaning it.
+  - **The share dialog could show the previous project's
+    collaborators.** `useShareDialog` lives in `EditorShell` and
+    survives navigation, and `open()` only reset state on the
+    way in, so switching projects with the dialog open left the
+    old list and `canManage` under the new project's name.
+  - **`EditorDialog`'s `trigger` was typed `ReactNode`** while
+    `DialogTrigger asChild` calls `React.Children.only`, so text
+    or an array would have thrown at render rather than failed
+    to typecheck. Now `ReactElement`. No caller passes `trigger`
+    today, so this closes a latent trap rather than a live bug.
+  - Two documentation contradictions in this file and one
+    obsolete scope note in unit 08's specification, all fixed
+    below.
+  - Verified: `npx tsc --noEmit`, `npx eslint`, and
+    `npm run build` all pass with the same ten routes.
+- **Units 01–09 confirmed in Chrome against the real project
+  database (2026-08-11).** Every feature specification from 01
+  to 09 was driven through the running application in real
+  signed-in sessions — including the two paths this file had
+  flagged as never browser-verified (unit 09's share dialog and
+  the sidebar-link audit fix). **237 checks passed across three
+  parts (51 + 57 + 129) and no application defect was found.** This was also the
+  first time the configured project database served the
+  application; see **Verified End to End**. The remaining
+  substitution is Liveblocks, which still has no account key.
+- **Unit 09 — Share dialog
+  (`context/feature-specs/09-share-dialog.md`) — code
+  complete and verified (2026-08-10).** The navbar's share
+  button is now live: it opens a dialog that lists a project's
+  collaborators enriched with Clerk display names and avatars,
+  lets the **owner** invite by email and remove access, shows a
+  collaborator a read-only list, and copies the workspace link
+  with temporary `Copied!` feedback. Two new API routes back
+  it, with ownership enforced server-side on both writes.
+  `npx next typegen`, `npx tsc --noEmit`, `npm run lint`, and
+  `npm run build` all pass with no errors and no warnings,
+  reporting **ten** routes plus `ƒ Proxy (Middleware)`. **39 of
+  39 automated checks passed** against a real database and the
+  real Clerk test instance — see *Unit 09* under Completed.
+- **Unit 08 — Editor workspace shell
+  (`context/feature-specs/08-editor-workspace-shell.md`) —
+  code complete and verified end to end (2026-08-10).**
+  `/editor/[projectId]` is now a full workspace shell: a
+  Server Component that resolves access through
+  `lib/project-access.ts`, redirects an unauthenticated
+  visitor to `/sign-in`, renders `AccessDenied` for a missing
+  or unauthorised project, and otherwise renders the canvas
+  placeholder inside the navbar, project sidebar, and AI
+  panel. `npx tsc --noEmit`, `npm run lint`, and
+  `npm run build` all pass with no errors and no warnings,
+  reporting the same eight routes plus `ƒ Proxy (Middleware)`.
+  **45 of 45 browser checks passed** in a real signed-in
+  session — see *Unit 08* under Completed.
+- **Units 01–07 re-audited against their specifications
+  (2026-08-10).** Every "Check when done" item in specs 01–07
+  was checked against the real source, and the schemas,
+  services, access checks, and the Liveblocks adapter were
+  re-executed — 58 of 59 automated checks passed, the one
+  failure being the harness calling a Server-Component-only
+  module. `npx prisma generate`, `npx tsc --noEmit`,
+  `npm run lint`, and `npm run build` all pass with no errors
+  and no warnings, reporting the same eight routes plus
+  `ƒ Proxy (Middleware)`. **One real gap was found and
+  fixed** — see *Opening a project from the sidebar* below.
 - Unit 07 — Wire the editor home
   (`context/feature-specs/07-wire-editor-home.md`) — code
   complete. The sidebar and the three dialogs now run on the
@@ -582,14 +669,401 @@ change.
   - Both throwaway verification scripts were deleted after the
     run.
 
+- Unit 08 — Editor workspace shell:
+  - Added `lib/project-access.ts`, the page-level access
+    helper the specification asks for, holding
+    `getCurrentIdentity()` (the Clerk `userId` plus the
+    nullable primary email) and `resolveProjectAccess()`,
+    which answers `unauthenticated`, `denied`, or `granted`
+    with the project and how the user reaches it. It composes
+    Clerk identity with the existing
+    `findAccessibleProject()` query rather than
+    reimplementing it, so there is still one place that knows
+    a project is reachable by `ownerId` **or** by a
+    `ProjectCollaborator` email.
+  - **A page's access outcome deliberately has three states,
+    not four.** `features/projects/project-access.ts` keeps
+    `owner`/`forbidden`/`missing` for the route handlers,
+    which must answer `403` and `404` differently, but
+    `resolveProjectAccess` collapses a missing project and an
+    inaccessible one into one `denied`: distinguishing them in
+    the UI would confirm that another user's project exists.
+  - Added `components/editor/access-denied.tsx` — a centred
+    column with a lock icon in a `bg-muted` square, a short
+    message, and an outline button back to `/editor`. It is a
+    Server Component; it holds no state.
+  - Rewrote `app/(editor)/editor/[projectId]/page.tsx`. It is
+    a Server Component that resolves access **before**
+    rendering, then only chooses what to show: `redirect()` to
+    the sign-in path from `lib/auth-routes.ts` when
+    unauthenticated, `AccessDenied` when denied, and
+    `CanvasPlaceholder` when granted. It now contains no
+    access logic and no Prisma or Clerk import of its own.
+    This replaced the previous `notFound()` for an
+    inaccessible project — `AccessDenied` keeps the editor
+    chrome and gives the user a route back, which a 404 did
+    not.
+  - Added `components/editor/canvas-placeholder.tsx`, the
+    centred placeholder that fills the canvas region on
+    `--background`, and
+    `components/editor/ai-sidebar.tsx`, the right-hand panel
+    for the future AI design assistant. The AI panel mirrors
+    the project sidebar's overlay mechanics — an `absolute
+    inset-y-0 right-0 z-40` `<aside>` sliding between
+    `translate-x-full` and `translate-x-0`, `inert` and
+    `aria-hidden` while closed — so opening it never reflows
+    the canvas and its controls stay out of the tab order.
+    **No AI functionality was added**: it holds a heading, a
+    close button, and one line of placeholder copy.
+  - Extended `editor-navbar.tsx`. The previously empty centre
+    section now shows the open project's name as a truncating
+    `text-sm font-semibold` `<h1>`, and the right section
+    gained the share button and the AI sidebar toggle ahead of
+    Clerk's `UserButton`. Both project actions render **only
+    when a project is open**, so the editor home is unchanged.
+    The share button is `disabled`, because sharing is out of
+    scope for this unit — a visibly unready control rather
+    than one wired to a no-op.
+  - `editor-shell.tsx` now owns a second piece of open state
+    for the AI panel and derives the active project by
+    matching `useParams()` against the lists the layout
+    already fetched. **No second query for the name** — and
+    because a denied project is in neither list, the navbar
+    then shows no name and no project actions, so the chrome
+    cannot imply access the server refused.
+  - The AI panel is mounted **only** with a project open,
+    since its toggle lives in the navbar's project actions:
+    mounting it unconditionally would let a user leave a
+    workspace with the panel open and no control left to close
+    it.
+  - No new dependency was installed, and no Liveblocks
+    provider, React Flow, canvas state, AI call, sharing
+    behaviour, upload, or requirements logic was added.
+  - Verified: `npx prisma generate`, `npx tsc --noEmit`,
+    `npm run lint`, and `npm run build` all pass with no
+    errors and no warnings, reporting the same eight routes
+    plus `ƒ Proxy (Middleware)` — this unit adds components
+    and a helper, not routes.
+  - **Verified in a real signed-in Chrome session over CDP —
+    45 checks, all passing.** A throwaway harness seeded three
+    projects (one owned, one shared with the user by email,
+    one belonging to another user) and minted a Clerk sign-in
+    ticket. Confirmed: the ticket lands on `/editor`; the home
+    navbar shows no project name, no share, and no AI toggle
+    while keeping the sidebar toggle; `My Projects` lists the
+    owned project linking to `/editor/<id>` with both owner
+    actions, and excludes the other user's project; `Shared`
+    lists the collaborator project with **zero** action
+    buttons. On the owner's workspace the navbar names the
+    project, the share button is present and `disabled`, the
+    canvas placeholder renders, and `main` measures exactly
+    749px — the 805px viewport less the 56px navbar — so the
+    canvas fills the remaining space. The sidebar marks the
+    open project `aria-current="page"` and, while open, leaves
+    `main` at x=0 and 1424px wide, unchanged, so it overlays
+    rather than pushes. The AI panel opens to 320px flush with
+    the right edge (`right=1424`, viewport 1424) leaving
+    `main` at 1424px, reports `aria-expanded="true"`, and on
+    close returns `aria-hidden="true"`, `inert`, and
+    off-canvas at `left=1424`. A **collaborator** opened the
+    shared workspace and the navbar named it. Both another
+    user's project and a non-existent one rendered
+    `AccessDenied` with a lock icon and a `/editor` link, and
+    in both cases the refused project's name appeared
+    **nowhere** in the document and the navbar showed no
+    project chrome. Scanning all 138 served scripts found no
+    Liveblocks and no xyflow/React Flow code, confirming the
+    scope boundary. No page exceptions and no application
+    console errors.
+  - Two substitutions were needed, neither changing what the
+    application executed. The project database is still
+    unreachable (`P1001`), so the run used the **already
+    running** local `prisma dev` server, whose schema was
+    already applied — reusing it avoids the TUI problem noted
+    below. And because `next dev` recompiles per request and
+    wedged under the driver's navigations, the run was driven
+    against `next start` on the **production build**, which is
+    a stronger check: it is the built output that was
+    exercised.
+  - The seeded projects and both throwaway Clerk users were
+    deleted afterwards — the cascade left zero
+    `ProjectCollaborator` rows — and all three harness files
+    were removed. No application file was modified for the
+    verification.
+
+- Unit 09 — Share dialog:
+  - Added `features/collaborators/`, the second `features/`
+    module: `collaborator-types.ts` (the `CollaboratorSummary`
+    contract and the `CollaboratorListResponse` envelope),
+    `collaborator-schema.ts`, `collaborator-service.ts`,
+    `collaborator-summary.ts`, `collaborator-client.ts`,
+    `collaborator-list-item.tsx`, and
+    `share-project-dialog.tsx`.
+  - Added `app/api/projects/[projectId]/collaborators/route.ts`
+    (`GET` list, `POST` invite) and
+    `.../collaborators/[collaboratorId]/route.ts` (`DELETE`).
+    Both are typed with the generated `RouteContext<…>` and
+    `await context.params`. `GET` resolves access with
+    `resolveProjectAccess`, so a **collaborator may read the
+    list**, and returns `canManage` alongside it; `POST` and
+    `DELETE` use `checkProjectOwnership`, so only the owner
+    writes and a non-owner is told `403` while a missing
+    project is `404`.
+  - **The client is never trusted for `canManage`.** The
+    server computes it from the same access check that
+    authorised the read, and the dialog enables the invite form
+    and the remove buttons from that answer rather than from a
+    guess. The API would refuse a non-owner regardless
+    (invariant 6) — the flag decides only what is rendered.
+  - Added `lib/clerk-identity.ts`, extracting
+    `CurrentIdentity` and `getCurrentIdentity()` out of
+    `lib/project-access.ts` so the page access check, the
+    project lists, and the collaborator routes all read
+    identity through one function. It now **lower-cases** the
+    primary email.
+  - **Email is normalised on both sides, in exactly one place
+    each.** `ProjectCollaborator.email` is the collaborator's
+    only identity and Postgres comparison is case-sensitive, so
+    storing `Bob@Example.com` while Clerk reports
+    `bob@example.com` would leave a row that matches nothing —
+    the project would never appear in `Shared` — and would let
+    `@@unique([projectId, email])` accept the same person
+    twice. The invite schema lower-cases on write and
+    `getCurrentIdentity()` lower-cases on read.
+  - Changed `features/projects/project-lists.ts` to call
+    `getCurrentIdentity()` instead of `currentUser()` directly,
+    so the email that matches collaborator rows is normalised
+    by that same single function.
+  - Added `lib/clerk-users.ts` with `findUserProfilesByEmail`,
+    the **only** place Clerk is asked for display data, per the
+    provider-isolation rule. It batches the whole list into one
+    call per 100 addresses, which is Clerk's filter limit.
+  - **The profile map is keyed by each returned user's own
+    addresses, not the requested ones.** Clerk documents the
+    `emailAddress` filter as a case-insensitive **partial**
+    match, so it can return users the caller never asked about;
+    keying on what came back means a lookup can only ever hit
+    an exact match.
+  - **A Clerk failure degrades to email-only rather than
+    hiding who has access.** The lookup catches and returns an
+    empty map, so an enrichment outage renders the list from
+    this application's own database using the same fallback an
+    unregistered invitee already takes.
+  - `collaborator-service.ts` scopes every write by owner.
+    Invite reaches the project through a nested
+    `project: { connect: { id, ownerId } }`, so the row cannot
+    attach to another user's project even if ownership changed
+    after the check; removal puts the collaborator ID, the
+    project ID, **and** the owner in one `where`, so a
+    collaborator ID belonging to another project cannot be
+    deleted through this route. A duplicate invite is decided
+    by the unique constraint rather than a prior read, so two
+    simultaneous invites cannot both insert.
+  - Added an **owner self-invite guard**: inviting your own
+    primary address answers `409`, since a row for the owner
+    would put the project in both `My Projects` and `Shared`.
+  - Added `hooks/use-share-dialog.ts`, which owns all dialog
+    state and fetches the list when the dialog opens rather
+    than with the page, because the navbar renders on every
+    editor screen and most visits never open it. An invite
+    appends the **server's** returned row, so the removal ID
+    and the Clerk data are the server's; a removal drops a row
+    only after the server confirms it, so a failure cannot show
+    access that still exists.
+  - Added `conflictResponse` (409) to `lib/api-response.ts`.
+  - Added `components/ui/avatar.tsx` via
+    `npx shadcn@latest add avatar` (CLI 4.16.2). Verified it
+    wrote only that file and left `app/globals.css`
+    byte-identical to a pre-run backup, so the dark palette was
+    not overwritten.
+  - `editor-navbar.tsx`: the share button is no longer
+    `disabled` and now takes `onShareProject`. It opens for a
+    collaborator too — the **server's** answer decides what
+    they may do, so the button does not have to predict it.
+  - `editor-shell.tsx` mounts the dialog keyed to the
+    **resolved** project rather than the route's raw ID, so it
+    can only load collaborators for a project the server
+    already returned in one of the lists.
+  - Remove buttons are **absent from the DOM** for a
+    collaborator rather than disabled, matching the sidebar
+    rows, and each carries an `aria-label` naming who it
+    removes.
+  - **Deviation from the specification, flagged
+    deliberately:** the spec lists copying the project link
+    under **Owners**, but the Copy link button renders for a
+    collaborator as well. A link grants nothing on its own —
+    `/editor/[projectId]` runs its own access check and only an
+    invite grants access — and a collaborator who is already in
+    the workspace can read the URL from the address bar. Say so
+    rather than leave it silent: **revert it to owner-only if
+    the literal reading is wanted.**
+  - Verified: `npx next typegen`, `npx tsc --noEmit`,
+    `npm run lint`, and `npm run build` all pass with no errors
+    and no warnings. The build reports **ten** routes plus
+    `ƒ Proxy (Middleware)` — `ƒ /api/projects/[projectId]/collaborators`
+    and `ƒ /api/projects/[projectId]/collaborators/[collaboratorId]`
+    are new.
+  - **Verified the service and schema by executing them
+    against a real database — 33 checks, all passing.** A
+    throwaway harness drove the real modules against the local
+    `prisma dev` server and asserted with `pg` directly.
+    Confirmed: a mixed-case padded address is trimmed and
+    lower-cased; six malformed addresses, a missing key, and a
+    255-character address are all rejected while 254 is
+    accepted; an owner invite writes exactly one row; a repeat
+    is `duplicate` and writes no second row; **a non-owner
+    invite is `missing` and writes no row at all**; inviting to
+    a nonexistent project is `missing`; the same address on a
+    *different* project is accepted; the list is oldest-first,
+    scoped to its project, and exposes only `id` and `email`;
+    **a non-owner removal removes nothing**; **a valid
+    collaborator ID from another project cannot be removed
+    through this project**, and that other project's row
+    survived; an owner removal removes exactly the addressed
+    row; a repeat removal reports none; and deleting the
+    project cascades the collaborator rows away.
+  - **Verified Clerk enrichment against the real Clerk test
+    instance — 6 checks, all passing.** An empty request makes
+    no call; an unregistered address resolves to nothing, which
+    is the email-only fallback; a real user's address resolved
+    to a profile carrying an `imageUrl`, with `displayName`
+    either absent or non-empty but never blank; and an
+    UPPERCASE address still resolves, confirming the map's
+    normalised keys. The harness was **read-only** — it created
+    and deleted no Clerk user — and printed no address, name,
+    or image URL, only whether each lookup resolved.
+  - **Verified the HTTP boundary against the dev server.** All
+    three verbs — `GET` and `POST` on the collection and
+    `DELETE` on an item — answer `401` with a JSON body when
+    unauthenticated, including for malformed JSON, so the
+    rejection happens before any body parse or database call.
+    A `GET` on the item route is `405`, so `DELETE` is the only
+    verb it exposes.
+  - **Now verified in a browser (2026-08-11).** Superseded — see
+    **Verified End to End**. The invite-then-see-the-row-appear
+    path, the Clerk name and avatar, the email-only fallback,
+    the removal disappearing, the collaborator's read-only view,
+    and the `Copied!` label reverting after ~2s were all driven
+    through two real signed-in Chrome sessions against the real
+    database.
+  - Both harnesses were deleted after the run, the seeded rows
+    were removed (the cascade left none behind), the
+    verification dev server was stopped and its port released,
+    and **no application file was modified for the
+    verification.**
+
+- Opening a project from the sidebar (audit fix, 2026-08-10):
+  - `features/projects/project-list-item.tsx` rendered the
+    project name as a plain `<span>`, so **nothing in the
+    application could open an existing project.** Create
+    navigated to `/editor/[projectId]` and the route carried a
+    working access check, but the only way back to a project
+    was to retype its URL — while the editor home told the
+    user to "choose a project from the sidebar" and the
+    `Shared` tab had no create path at all, so a collaborator
+    could never reach a project by any route.
+  - The name is now a `next/link` to `/editor/${project.id}`.
+    It addresses the project by ID alone, so opening one still
+    derives nothing from its name. The row for the open
+    workspace is marked `aria-current="page"` and takes
+    `--foreground` while the others take
+    `--muted-foreground`, which needs no new token and no
+    second surface colour. The rename and delete buttons are
+    unchanged and remain owner-only.
+  - **Browser-verified 2026-08-11.** The link opens the
+    workspace, the open row carries `aria-current="page"` for
+    both an owner and a collaborator, and a collaborator's
+    `Shared` rows expose no rename or delete control.
+  - `useParams()` supplies the active ID, the same mechanism
+    `use-project-actions.ts` already uses for its
+    delete-the-open-workspace redirect, so there is one
+    source for "which project is open".
+  - This is a UI affordance only: `/editor/[projectId]` still
+    runs `findAccessibleProject` and answers `notFound()` for
+    a project that is missing or inaccessible, so the link
+    grants nothing (invariant 6).
+  - Verified: `npx tsc --noEmit`, `npm run lint`, and
+    `npm run build` pass with the same eight routes. Since
+    driven through a signed-in Chrome session as well — see
+    **Verified End to End** (2026-08-11).
+
 ## Verified End to End
 
-Units 01–07 were driven through a real signed-in Chrome
-session over CDP (2026-08-06). Two substitutions were needed,
-neither of which changes what the application executed:
+### Units 01–09 against the real database (2026-08-11)
 
-- **Database:** the project database is still unreachable
-  (`P1001`, see **In Progress**), so the migration was applied
+**The project database served the application for the first
+time.** `DATABASE_URL` is now the `prisma+postgres://`
+Accelerate URL, which travels over 443 and so is unaffected by
+the 5432 filtering described below. `migrate deploy` applied the
+committed migration, `migrate status` reported "Database schema
+is up to date!", and `migrate diff` returned "This is an empty
+migration" — **zero drift**. This exercised the `accelerateUrl`
+branch of `lib/prisma.ts` rather than the `PrismaPg` one.
+
+Liveblocks remains stubbed (no account key — see
+**In Progress**), so that substitution still stands.
+
+All nine units were re-driven through Chrome over CDP against
+this database. **237 checks passed across three parts — 51 for
+units 01–03, 57 for 04–07, 129 for 08–09 — with no application
+defect found.** Units 01–07 reproduced their
+earlier results; what units 08 and 09 added, all through the
+actual UI in two concurrent signed-in sessions:
+
+- **The workspace shell.** The navbar names the project, the
+  canvas placeholder fills the region below the 56px navbar
+  exactly, and it sits on `--background` while the panels take
+  `--card`. Neither the project sidebar nor the AI panel
+  reflows the canvas — `main`'s width was byte-identical open
+  and closed — and the AI panel is `inert` and `aria-hidden`
+  while closed, so its controls stay out of the tab order. It
+  opens from the navbar and closes from either control.
+- **`AccessDenied` reveals nothing.** Another user's project
+  and a non-existent ID render **byte-identical** text, the URL
+  is not redirected away from, and the refused project's name
+  appears nowhere in the served HTML — not just nowhere
+  on screen. The navbar drops its name, Share, and AI toggle,
+  so the chrome cannot imply access the server refused. A
+  malformed, non-UUID ID does not 500.
+- **Scope held.** All 16 scripts served to the browser (920KB)
+  were fetched and searched: **no `liveblocks`, `reactflow`,
+  `react-flow`, or `@xyflow` code ships.**
+- **Sharing, end to end.** An invite answered `201` and the row
+  appeared immediately carrying the invitee's **Clerk display
+  name over their email and their Clerk-hosted avatar**, which
+  actually loaded. An address with no Clerk account fell back
+  to the email as its label with no blank name line. A re-invite
+  differing only in case was `409` and added no row; an owner
+  inviting themselves was `409`. A removal answered `204`, the
+  row disappeared, and the change persisted — the reopened
+  dialog re-fetched rather than showing a stale list.
+- **`Copied!` behaves.** The copied text is exactly
+  `<origin>/editor/<projectId>` — no project name in it — the
+  dialog stays open so the feedback is visible where it
+  happened, and the label reverts to `Copy link` after ~2s.
+- **A collaborator is read-only in fact, not just in
+  appearance.** Their dialog contains **zero `<input>`
+  elements** and zero remove buttons, and the server refused
+  their forged `POST` and `DELETE` with `403` while answering
+  their `GET` `200` with `canManage: false`. A stranger's
+  collaborator list answered `404`, not `403`, so existence is
+  not revealed.
+- Signed out, `/editor/[projectId]` redirected to `/sign-in`
+  with no project name in the HTML, and all three collaborator
+  verbs answered `401`.
+- No uncaught page exceptions and **no unanswered
+  app-origin request** in either session. Requests that
+  reported `ERR_ABORTED` had all already been answered `200` or
+  `204` — the normal shape of a superseded RSC prefetch, not a
+  failure.
+
+### Units 01–07 against a substitute database (2026-08-06)
+
+Two substitutions were needed, neither of which changes what
+the application executed:
+
+- **Database:** the project database was unreachable
+  (`P1001`), so the migration was applied
   to a local `prisma dev` Postgres 17.5 server and the
   application was pointed at it for the run. `migrate deploy`
   applied cleanly, `migrate status` reported "Database schema
@@ -653,44 +1127,94 @@ What the run confirmed, all through the actual UI:
 
 ## In Progress
 
-- **Apply the migration to the project database.** The
-  migration is committed and now proven to apply with zero
-  drift, but the configured database has still never received
-  it. Port 5432 on `pooled.db.prisma.io` accepts a TCP
-  connection and then never answers the Postgres startup
-  handshake, so the CLI fails with `P1001`. Re-confirmed
-  2026-08-06 by sending the 8-byte `SSLRequest` frame by hand:
-  the same host answers on 443, and DNS resolves, so it is a
-  network block rather than a credential or schema problem. Run
-  `npx prisma migrate deploy` from a network that permits
-  outbound 5432, or use the Prisma Postgres
-  `prisma+postgres://` Accelerate URL, which travels over 443.
-  Nothing in the code needs to change.
+- ~~**Apply the migration to the project database.**~~
+  **Done 2026-08-11.** `DATABASE_URL` in both `.env` and
+  `.env.local` is now the `prisma+postgres://` Accelerate URL,
+  which travels over **443** and so sidesteps the 5432
+  filtering entirely. `migrate deploy` applied the committed
+  migration, `migrate status` reports "Database schema is up to
+  date!", and `migrate diff` reports an empty migration — zero
+  drift. Units 01–09 were then verified against it. This
+  selects the `accelerateUrl` branch of `lib/prisma.ts`; the
+  `PrismaPg` branch is now the one no longer exercised.
+
+  Kept for the record, since the constraint still applies to any
+  direct `postgres://` connection from this network:
+  **the failure mechanism is a transparent proxy, not a dropped
+  packet.**
+  Hand-rolled probes on 2026-08-10 show 5432 **does** complete
+  the TCP connect on `db.prisma.io`, `pooled.db.prisma.io`, and
+  even `accelerate.prisma-data.net` — a host that serves no
+  Postgres on 5432 at all — and all three then leave the 8-byte
+  Postgres `SSLRequest` unanswered. Port 54329 on the same host
+  gives `ETIMEDOUT` and an unresolvable host gives `ENOTFOUND`,
+  so the proxy answers the connect for 5432 specifically and
+  then swallows the protocol. An earlier note in this file said
+  5432 "never completes the TCP connect"; that was measured
+  before the proxy behaviour changed and is superseded. Port
+  443 on `db.prisma.io` completes a real TLS handshake
+  presenting a `db.prisma.io` certificate, which is why the
+  Accelerate path works and the direct one does not. A
+  `postgres://` URL — including `pooled.db.prisma.io`, tested
+  and failing identically — cannot be used from this network;
+  it would need one permitting outbound 5432.
+- **A local `prisma dev` server named `default` may still be
+  running** with the schema applied (TCP 51214 as of unit 08).
+  It is no longer needed now that the real database is
+  reachable, and nothing in it is project data.
 - **Set a real `LIVEBLOCKS_SECRET_KEY`.** The adapter is proven
   correct against a stub, but no room has been created on
-  Liveblocks' own servers. Only the key is missing.
+  Liveblocks' own servers, and the key is **absent from both
+  `.env` and `.env.local`** (re-checked 2026-08-10). Until it is
+  set, `POST /api/projects` cannot succeed: the room create
+  throws, the route deletes the project row again, and the
+  request fails — verified by executing `createProjectRoom`
+  with the key unset, which throws the module's own
+  "LIVEBLOCKS_SECRET_KEY is not set" error. Creating a project
+  in a real environment therefore depends on this key, not just
+  on the database.
 
 ## Next Up
 
-- Collaborator **management**. The `Shared` tab is now real —
-  `listProjectsForCollaborator` reads `ProjectCollaborator`
-  rows by email — but nothing **writes** them, so the tab can
-  only ever be empty until an invite flow exists. A room's
-  `usersAccesses` also grants the owner alone, so a
-  collaborator would currently be unable to enter the room.
-  Both belong to an invite specification.
+- **Grant a collaborator access to the Liveblocks room.**
+  Unit 09 closed the invite half of this — the `Shared` tab is
+  now reachable, because the share dialog writes
+  `ProjectCollaborator` rows — but `createProjectRoom` still
+  grants `room:write` to the **owner alone**, so an invited
+  collaborator can open the workspace and yet could not enter
+  the room once the canvas is live. Two parts remain: granting
+  a room accesses entry on invite (and revoking it on
+  removal), and the room authentication endpoint. A
+  collaborator is identified by email while Liveblocks wants a
+  user ID, so an invitee who has not signed up yet cannot be
+  granted anything at invite time — the grant probably belongs
+  in the auth endpoint, resolved per session, rather than in
+  the invite route. Decide that when the canvas lands.
+- **A removed collaborator keeps an open tab working.**
+  Removal deletes the row, but a collaborator already inside
+  the workspace holds a rendered page; nothing revalidates for
+  them, so their next navigation is the first thing the access
+  check sees. Acceptable now, since the canvas is a
+  placeholder and nothing is written from that page, but it
+  needs a real answer once the canvas can be edited.
 - `GET /api/projects` still returns owned projects only. The
   sidebar no longer uses it — the layout calls the services
   directly — so it is now only an unused public surface.
   Decide whether it should return both lists or be removed.
-- The project workspace itself.
-  `app/(editor)/editor/[projectId]/page.tsx` exists with the
-  real access check but shows only the project name. The
-  canvas, the Liveblocks client provider, and the room
-  authentication endpoint are all still to come.
-- Centre workspace and right properties panel, per the
-  Main Layout section of `ui-context.md`, once their
-  feature specifications exist.
+- **The architecture canvas.** The workspace shell is now
+  complete — navbar, project sidebar, canvas region, and the
+  AI panel placeholder — so what remains for
+  `/editor/[projectId]` is the canvas itself: `@xyflow/react`,
+  the component and connection models, the Liveblocks client
+  provider, and the room authentication endpoint.
+- **The AI design assistant.** The right panel is a
+  placeholder with no chat, no model call, and no state beyond
+  being open. It needs the Vercel AI SDK wiring, the
+  structured-output schemas, and the generation flow.
+- Lifecycle state and save status in the workspace navbar,
+  and the right properties panel for a selected requirement,
+  component, or finding, per the Main Layout section of
+  `ui-context.md`, once their feature specifications exist.
 
 ## Open Questions
 
@@ -789,8 +1313,8 @@ What the run confirmed, all through the actual UI:
   variation on a token that already exists, rather than
   extending the core palette.
 - **Project code lives in `features/projects/`, not
-  `components/`.** The dialogs, the sidebar row, the slug
-  helper, and the dialog hook all carry project domain
+  `components/`.** The dialogs, the sidebar row, and the
+  project client and service all carry project domain
   meaning, so they sit under `features/` per the
   file-organisation rules in `code-standards.md`. The
   chrome that merely *hosts* them — navbar, sidebar shell,
@@ -858,9 +1382,12 @@ What the run confirmed, all through the actual UI:
   hidden.** A collaborator row renders no rename or delete
   button at all, so the controls cannot be reached by
   keyboard or by a script toggling CSS. This is a UI
-  affordance only: it is not an access control, and the
-  server-side ownership check required by invariant 6 still
-  has to be written when the mutations land.
+  affordance only and is not an access control. The
+  server-side ownership check required by invariant 6 has
+  since been written and is what actually enforces this: the
+  project mutations scope every write to `ownerId`, and the
+  collaborator routes answer a non-owner's invite or removal
+  with 403 regardless of what the client renders.
 - **The mobile scrim is `sm:hidden`.** The sidebar is a
   non-modal overlay by an earlier decision, so a scrim at
   every width would block the canvas it deliberately floats
@@ -945,6 +1472,118 @@ What the run confirmed, all through the actual UI:
   blob path that no client should learn. A field added to the
   schema later is therefore private until it is deliberately
   added to `ProjectRecord`.
+- **A page's access check answers three states; a route
+  handler's answers three different ones.** `lib/project-access.ts`
+  returns `unauthenticated`, `denied`, or `granted`, while
+  `features/projects/project-access.ts` returns `owner`,
+  `forbidden`, or `missing`. The split is deliberate: an API
+  must distinguish `403` from `404`, whereas a page must not,
+  because rendering a different screen for "not yours" than
+  for "does not exist" confirms that somebody else's project
+  exists. Both are the same invariant-6 check reaching
+  different conclusions for different callers.
+- **The page-level access helper lives in `lib/`, not
+  `features/`.** It composes the Clerk provider with a
+  project query, and provider adapters belong in `lib/` per
+  the file-organisation rules. The query itself stays in
+  `features/projects/project-service.ts`, so there is still
+  exactly one place that knows what makes a project
+  reachable.
+- **An inaccessible workspace renders `AccessDenied` rather
+  than `notFound()`.** The earlier route answered a bare 404,
+  which dropped the user out of the editor with no route
+  back. The screen keeps the chrome, explains as little as
+  possible, and offers a link to `/editor`. It reveals no
+  more than the 404 did: a missing project and a forbidden
+  one render identical markup, and the refused project's name
+  is never fetched, so it cannot leak.
+- **The navbar's project name comes from the sidebar's
+  lists, not a second query.** `EditorShell` matches
+  `useParams()` against the owned and shared lists the editor
+  layout already fetched — the same mechanism that marks the
+  open row — so there is one source for "which project is
+  open" and no extra round trip. It also fails in the right
+  direction: a project the server refused is in neither list,
+  so the navbar shows no name and no project actions rather
+  than chrome implying access that was denied.
+- **Project actions are scoped to a project being open, and
+  so is the AI panel's mount.** Share and the AI toggle
+  render only with a project open, because neither means
+  anything on the editor home. The panel itself is mounted on
+  the same condition, since its only control is that navbar
+  toggle: mounting it unconditionally would let a user leave
+  a workspace with the panel open and nothing left to close
+  it.
+- **An action whose behaviour is not built yet is
+  `disabled`.** Introduced in unit 08 for the share button,
+  which was present because the specification required it
+  while sharing was out of scope — rendered visibly unready
+  rather than wired to a no-op that would read as a bug. Unit
+  09 wired it, so the pattern now has no live instance, but it
+  is the rule for the next control that arrives ahead of its
+  behaviour.
+- **The server decides what a dialog may offer, and says so
+  in the response.** `GET …/collaborators` returns
+  `canManage` beside the list, computed from the same access
+  check that authorised the read, and the share dialog renders
+  the invite form and the remove buttons from that flag. The
+  client never infers it by comparing a user ID to an owner
+  ID, which would put an authorisation decision in the
+  browser. It remains an affordance only — `POST` and `DELETE`
+  re-check ownership regardless (invariant 6).
+- **One access check reaches two different conclusions for
+  the collaborator routes.** `GET` uses
+  `resolveProjectAccess`, because a collaborator is allowed to
+  see who else has access, while `POST` and `DELETE` use
+  `checkProjectOwnership`, because a write must answer `403`
+  and `404` differently. This is the page-versus-handler split
+  from unit 08 applied within one feature rather than across
+  two.
+- **An email address is normalised in exactly two places,
+  once per direction.** The invite schema lower-cases on the
+  way in and `getCurrentIdentity()` lower-cases on the way
+  out. Because `ProjectCollaborator.email` *is* the
+  collaborator's identity and Postgres compares
+  case-sensitively, any third place that builds an email
+  filter would be a bug waiting to happen: a mixed-case row
+  matches nothing, so the project silently never appears in
+  `Shared`, and `@@unique([projectId, email])` would accept
+  the same person twice. Route every email through those two
+  functions.
+- **Clerk display data is enrichment, not the source of
+  truth.** `lib/clerk-users.ts` is the only module that asks
+  Clerk who someone is, and a failure there returns an empty
+  map rather than throwing, so the collaborator list still
+  renders from this application's own database showing emails
+  alone. Who has access is a fact this application owns; the
+  name and avatar beside it are decoration from a provider
+  that may be down. The same fallback covers an invitee who
+  has never signed up, so there is one path, not two.
+- **A Clerk email filter is a partial match, so the result
+  map is keyed by what came back.** `getUserList({
+  emailAddress })` is documented as case-insensitive and
+  partial, so it can return users that were never asked for.
+  Keying the profile map on each returned user's own addresses
+  rather than on the requested ones makes a lookup an exact
+  match by construction — keying it on the request would
+  attach one person's name and avatar to another person's row.
+- **The share dialog fetches on open, not with the page.**
+  The navbar renders on every editor screen and most visits
+  never open the dialog, so loading the list in the layout
+  would add a Clerk round trip to every navigation. The
+  pending state is set in the open handler rather than
+  synchronously inside the effect that fetches — which React
+  now warns about as a cascading render — and opening also
+  clears the previous project's list, so reopening cannot show
+  another project's collaborators while a request is in
+  flight.
+- **A list mutation is applied from the server's response,
+  never optimistically.** An invite appends the row the route
+  returned, so the ID a removal will address and the Clerk
+  name and avatar are the server's rather than a local guess,
+  and a removal drops a row only once the server confirms it.
+  A failed removal that had already left the list would show
+  the owner that access was revoked when it was not.
 - **Radius follows the generated primitives.** The earlier
   `ui-context.md` radius table conflicted with the shadcn
   defaults. Rather than restyle protected files in
@@ -954,6 +1593,81 @@ What the run confirmed, all through the actual UI:
   the primitives instead of diverging from them.
 
 ## Session Notes
+
+Review notes (added 2026-08-12, from the CodeRabbit pass):
+
+- **A wildcard in `.claude/settings.json` `allow` is a
+  destructive-command grant.** `Bash(npx prisma *)` reads as
+  "Prisma commands" but auto-approves `migrate reset`,
+  `db push --accept-data-loss`, `db execute`, and `db seed`.
+  List subcommands explicitly, and keep anything that writes
+  data or schema out of `allow` so consent is still asked for.
+- **Compensating for a remote create means assuming the create
+  may have succeeded.** A thrown error from an HTTP call is
+  ambiguous — a timeout or a dropped response can follow a
+  completed write. So the rollback deletes the remote resource
+  before the local row that names it, and gives up on the row
+  if that fails; the row is the only thing that remembers the
+  remote ID. The delete tolerating `404` is what makes the
+  no-room-was-created case safe.
+- **A hook mounted in the shell outlives the route.**
+  `EditorShell` persists across `/editor/[projectId]`
+  navigations, so any hook it owns keeps its state when the
+  project changes. Resetting on open is not enough — key the
+  state to its subject (`openForProjectId`, not `isOpen`) so it
+  cannot outlive what it describes. Clear a stale subject
+  **during render**, not in an effect: an effect commits one
+  render in which the dialog and the project disagree, and
+  `react-hooks/set-state-in-effect` rejects it. Deriving from a
+  match alone is also wrong — the stale ID survives and
+  navigating A → B → A reopens the dialog with no user action.
+- **`asChild` needs `ReactElement`, never `ReactNode`.** Radix
+  calls `React.Children.only` on it, so `ReactNode` moves a
+  compile-time error to a render-time throw.
+- **Most of a review can be about code that is not yours.** 253
+  of 259 comments landed in vendored skill documentation. Filter
+  by path before reading, and do not "fix" third-party content
+  that is only carried here.
+
+Browser-verification notes (added 2026-08-11, from the
+units 01–09 CDP run). These cost real time to find:
+
+- **A Clerk ticket session degrades under a long run.** Signing
+  in with `__clerk_ticket` works, but after a few minutes of
+  driving it the server log fills with "Refreshing the session
+  token resulted in an infinite redirect loop" and every
+  authenticated request answers `401`. The keys are fine — both
+  resolve to one development instance, and an *idle* page held a
+  200 for 3 minutes straight. Mint a **pool** of single-use
+  tickets and re-sign-in when a check sees a `401`, and treat a
+  mid-run `401` as a harness fault to attribute rather than a
+  feature failure to report.
+- **Kill the Chrome process tree, not the process.** `proc.kill()`
+  leaves renderers alive holding the inherited stdout pipe, so a
+  run piped to `tail` appears to hang long after every check
+  passed. Use `taskkill /PID <pid> /T /F` and remove the temp
+  profile directory — orphaned profiles accumulate and the
+  resulting contention makes `Page.navigate` time out.
+- **Write harness output to a file, not through a pipe.** For the
+  same reason: `node harness.cjs > log 2>&1` shows progress
+  live, while `| tail` shows nothing until exit.
+- **`ERR_ABORTED` is not a failure.** Correlate against
+  `Network.responseReceived` first: a superseded RSC prefetch
+  reports `ERR_ABORTED` *after* being answered `200`. Only count
+  requests that never received a status.
+- **A `type="email"` input rejects `setSelectionRange`.** Clear a
+  controlled field with real Backspace key events — assigning
+  `.value` bypasses React's state and the component never sees
+  the change.
+- **Radix removes `AvatarFallback` once the image loads**, so
+  assert "the slot is never blank" (fallback present *or* image
+  complete), not that the fallback exists.
+- **Give a test project a unique name.** An earlier aborted run
+  left a project sharing a name substring, which made a passing
+  delete look like a bug until it was isolated.
+- Match a submit button by `button[type="submit"]` inside its
+  form, not by its text: the label changes to `Inviting…` while
+  the request is in flight and a text match then throws.
 
 - `shadcn init` overwrites `app/globals.css` with the
   default light/dark neutral palette. If the CLI is re-run,
@@ -1104,15 +1818,21 @@ What the run confirmed, all through the actual UI:
   with a deliberately broken URL therefore succeeds, so a
   test that only constructs a client proves nothing about
   which branch it took.
-- Outbound TCP 5432 is blocked on this network in a way that
-  looks like a working connection: the handshake completes at
-  the TCP layer and then the server never replies to the
-  Postgres `SSLRequest`, so clients report a generic timeout
-  and Prisma reports `P1001`. Confirming it took sending the
-  8-byte `SSLRequest` frame manually and comparing against
-  port 443 on the same host, which answers. Suspect the
-  network before the credentials when a Prisma Postgres
-  `postgres://` URL times out.
+- Outbound TCP 5432 is intercepted on this network in a way that
+  looks like a working connection: the connect succeeds, and then
+  the `SSLRequest` goes unanswered, so clients report a generic
+  timeout and Prisma reports `P1001`. **A successful TCP connect
+  on 5432 proves nothing here.** The proof it is a proxy and not
+  the real server: `accelerate.prisma-data.net:5432` also
+  "connects" although it serves no Postgres, while port 54329 on
+  `db.prisma.io` gives `ETIMEDOUT` and a nonexistent host gives
+  `ENOTFOUND`. Diagnose by sending the 8-byte `SSLRequest` frame
+  manually rather than by connecting; compare against 443 on the
+  same host, which completes a real TLS handshake with a matching
+  certificate. Suspect the network before the credentials when a
+  Prisma Postgres `postgres://` URL times out — and note the
+  interception behaviour is not stable over time, so re-measure
+  rather than trusting an earlier note.
 - In development Clerk answers the first request per
   browser with a 307 to its `/v1/client/handshake`
   endpoint to set the dev-browser cookie. Use a cookie jar
@@ -1194,7 +1914,97 @@ What the run confirmed, all through the actual UI:
   to `oklab(0.6368 0.1879 0.0889)`, so assert against the
   `--destructive` token rather than expecting
   `rgb(239, 68, 68)` as a background.
+- `pg` 8.22 treats `sslmode=require` as an alias for
+  `verify-full` and prints a deprecation warning saying so; in
+  `pg` 9 it will adopt libpq semantics instead. The project's
+  `DATABASE_URL` uses `sslmode=require`, and it **is** enforced
+  — a query against a plaintext local server hangs on the TLS
+  attempt rather than connecting. Use
+  `sslmode=verify-full` explicitly to keep today's behaviour
+  across that upgrade.
+- A backgrounded `next dev` started from a shell that later
+  times out is killed with it, and the port then reads as
+  closed. Start it as a genuinely detached background task, and
+  expect `EADDRINUSE` rather than a free port if an earlier one
+  survived — check the port before assuming a start failed.
+- `prisma migrate diff` needs `--from-config-datasource
+  prisma.config.ts` in Prisma 7 to diff against the live
+  database. `--from-schema-datasource prisma/schema.prisma`
+  fails here, because the `datasource` block holds no `url` —
+  the URL lives in `prisma.config.ts`.
 - Node resolves `require()` from the **script's own** directory,
   so a harness kept outside the repository cannot `require("pg")`
   from the project's `node_modules`. Pass an absolute path, or
   keep the script inside the project and delete it afterwards.
+- **In Prisma 7 the generated client is TypeScript source, not
+  compiled JavaScript.** `app/generated/prisma/` holds
+  `client.ts`, `models.ts`, and `enums.ts`, so a plain `.cjs`
+  harness cannot `require()` it — the require fails with
+  `MODULE_NOT_FOUND` on a path that plainly exists. Seed and
+  assert with `pg` directly from a throwaway script, and leave
+  Prisma to the application code being verified.
+- **Drive browser verification against `next start`, not
+  `next dev`.** A dev server compiles each route on first
+  request, so a CDP `Page.navigate` can exceed a 30s command
+  timeout, and a driver that keeps navigating while compiles
+  are queued wedges the server: the port stays `LISTENING`
+  while every request returns nothing, which reads exactly
+  like a crash. Run `npm run build` then `next start` on a
+  spare port — it needs no per-request compile and it is the
+  built output that gets exercised, which is the stronger
+  check.
+- `ws` is available in this project's `node_modules`, so a raw
+  CDP driver needs no Puppeteer or Playwright install (neither
+  is present). Launch Chrome from
+  `C:\Program Files\Google\Chrome\Application\chrome.exe` with
+  `--headless=new` and `--remote-debugging-port`, read the
+  target from `/json/list`, and speak CDP over the socket.
+- A backgrounded server started from a shell that later times
+  out can survive as an orphan holding its port. Find the
+  owning PID with `netstat -ano | grep ":<port>"` and
+  `taskkill //PID <pid> //F` — note the doubled slashes, which
+  stop Git Bash rewriting the flags as paths.
+- **`PrismaClientKnownRequestError` is not a named export of
+  the generated client.** It is reached through the `Prisma`
+  namespace: `import { Prisma } from
+  "@/app/generated/prisma/client"`, then `error instanceof
+  Prisma.PrismaClientKnownRequestError`, which also narrows an
+  `unknown` so `.code` is reachable. Importing it directly
+  fails `TS2305`.
+- **`createMany`/`createManyAndReturn` data is scalar-only**,
+  so it cannot carry a nested `connect` and therefore cannot
+  be scoped by a related model's column. Use `create` with
+  `project: { connect: { id, ownerId } }` for an owner-scoped
+  insert — `ProjectWhereUniqueInput` accepts `ownerId` as a
+  filter alongside the unique `id` — and handle `P2025`, which
+  is what a `connect` matching nothing reports.
+- Clerk's `clerkClient` from `@clerk/nextjs/server` is a
+  **function returning a promise** — `await clerkClient()` —
+  not the client itself. `users.getUserList({ emailAddress:
+  string[], limit })` resolves to `{ data: User[], totalCount
+  }`, the `emailAddress` filter takes at most **100** entries
+  and is a case-insensitive **partial** match, and a `User`
+  exposes `fullName` (a getter), `username`, `imageUrl`, and
+  `emailAddresses[].emailAddress`.
+- Zod 4 chains a transform before validation with `pipe`:
+  `z.string().trim().toLowerCase().pipe(z.email().max(254))`.
+  `z.email()` is a top-level function in v4, not
+  `z.string().email()`.
+- **A harness can drive the real Prisma modules if it sets
+  `DATABASE_URL` before importing them.** `lib/prisma.ts`
+  reads it at module scope, so assign `process.env.DATABASE_URL`
+  and then use a dynamic `await import(...)` — a static import
+  is hoisted above the assignment and the client is built with
+  the wrong URL. Write the harness as `.mts` and run it with
+  `npx tsx`, which resolves the TypeScript generated client
+  that a `.cjs` script cannot.
+- `node --env-file=.env.local --import tsx script.mts` gives a
+  harness the Clerk keys without any script reading an env file
+  itself, which keeps secrets off the command line and out of
+  the console.
+- When verifying against a provider holding real people's
+  data, assert on **whether** a lookup resolved rather than
+  printing what came back. A harness that logs an address, a
+  name, or an avatar URL puts personal data in the transcript
+  for no gain — `check("resolved", profiles.has(email))` proves
+  the same thing.

@@ -166,9 +166,16 @@ palette above must be re-applied.
 
 ### Currently available primitives
 
-`Button`, `Card`, `Dialog`, `Input`, `Tabs`, `Textarea`,
-and `ScrollArea`. Add further primitives with the CLI when
-a feature needs them rather than writing custom versions.
+`Avatar`, `Button`, `Card`, `Dialog`, `Input`, `Tabs`,
+`Textarea`, and `ScrollArea`. Add further primitives with the
+CLI when a feature needs them rather than writing custom
+versions.
+
+`Avatar` is composed of three parts: `AvatarImage` for a
+resolved image, `AvatarFallback` for initials, and the
+`Avatar` wrapper carrying the size. Render `AvatarImage` only
+when there is a URL — the fallback is the normal state for
+someone whose profile could not be resolved, not an error.
 
 These primitives use the Radix composition API, so compose
 a trigger with `asChild` rather than a `render` prop:
@@ -250,6 +257,90 @@ is centred, plain, and **not** wrapped in a card: a
 `text-4xl` headline, a short muted paragraph, and the single
 primary action.
 
+With a project open, the canvas region holds the centred
+canvas placeholder on `--background`, so the navbar and the
+two `--card` side panels read as chrome layered over it. The
+architecture canvas will be mounted in the same region.
+
+### Workspace navbar
+
+The navbar has three equal sections. The left one carries the
+project sidebar toggle; the centre shows the open project's
+**name** as a truncating `text-sm font-semibold` heading; the
+right holds the project actions and then Clerk's user menu.
+
+The project name and the project actions — share and the AI
+sidebar toggle — appear **only when a project is open**, so
+the editor home shows the sidebar toggle and the user menu
+alone. The name comes from the project lists the editor layout
+already fetched, matched on the route's ID, so there is no
+second query for it and the chrome shows no name for a project
+the server refused.
+
+An action whose behaviour is not implemented yet is rendered
+`disabled` rather than wired to a no-op, so the control is
+visibly not ready instead of appearing broken.
+
+Share opens for a collaborator as well as an owner. The button
+does not predict what the user may do — the dialog asks the
+server and renders the management controls from that answer —
+so a collaborator gets a read-only list rather than a refusal.
+
+### Share dialog
+
+The share dialog lists everyone with access to the open
+project, one row each: an `Avatar` showing the person's Clerk
+image or their initial, their display name with the email
+beneath it in `text-xs text-muted-foreground`, and — for an
+owner only — a remove button.
+
+Someone with no resolvable Clerk profile shows their **email
+alone**, with the initial taken from it. This is the normal
+state for an invitee who has not signed up yet, so it is
+rendered as ordinary content and not as a missing value.
+
+An owner also gets an invite field above the list; a
+collaborator gets the list and nothing else, and the remove
+buttons are **absent from the DOM** rather than disabled,
+matching the sidebar rows. Which controls appear comes from
+the server's `canManage`, never from a comparison the browser
+makes.
+
+The list covers all four states from the interaction rules:
+loading while it is fetched, a `role="alert"` error if the
+fetch fails, the rows themselves inside a `max-h-56`
+`ScrollArea`, and a line explaining that only the owner has
+access when there are no collaborators yet.
+
+The footer carries a `mr-auto` copy-link button, left of the
+close action, which swaps its icon and label to `Copied!` for
+two seconds. It is deliberately **not** a submit, so copying a
+link does not dismiss the dialog the user is still working in.
+
+### AI design assistant panel
+
+The right-hand panel mirrors the project sidebar's overlay
+mechanics: a positioned `<aside>` inside the canvas region on
+`bg-card` with a `border-l`, sliding between
+`translate-x-full` and `translate-x-0`, and `inert` plus
+`aria-hidden` while closed so its controls stay out of the tab
+order. Opening it therefore never reflows the canvas.
+
+It opens and closes from the navbar toggle, which is also
+where it is scoped: the panel is mounted only with a project
+open, so leaving a workspace cannot strand an open panel with
+no control left to close it.
+
+### Access denied
+
+A workspace the user may not open renders a centred column in
+the canvas region: a `size-12` `rounded-xl` `bg-muted` square
+holding a muted lock icon, a `text-2xl` heading, one muted
+line, and an outline button back to `/editor`. The message
+does **not** say whether the project is missing or merely not
+shared, because distinguishing them would confirm that another
+user's project exists.
+
 ### Project sidebar
 
 Projects are split across the two tabs by access: owned
@@ -258,6 +349,14 @@ projects under `My Projects`, collaborator projects under
 hover **and** on keyboard focus (`group-hover` plus
 `group-focus-within`), and a row the user does not own
 renders no actions at all rather than hiding them.
+
+The project **name is the link** that opens the workspace at
+`/editor/[projectId]` — this is how a project is opened, and
+it is what the editor home's "choose a project from the
+sidebar" refers to. The row for the open project is marked
+`aria-current="page"` and rendered in `--foreground`, while
+the others sit in `--muted-foreground`, so the open workspace
+is identifiable without a second surface colour.
 
 Below `sm` an open sidebar is backed by a scrim that dims the
 canvas and closes the panel when tapped. There is no scrim at
