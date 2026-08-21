@@ -31,13 +31,17 @@ interface EditorNavbarProps {
 
 /**
  * Fixed-height chrome across the top of every editor screen: the sidebar toggle
- * on the left, the open project's name in the centre, and the workspace actions
- * with Clerk's user menu on the right.
+ * on the left, the open project's name in the centre, and the workspace actions on
+ * the right.
  *
  * The templates entry point, the share button, and the AI toggle belong to a
  * project, so they appear only once one is open. Share opens the share dialog for
  * both an owner and a collaborator — the dialog itself decides what each may do,
  * from the server's answer rather than from anything this bar knows.
+ *
+ * The right-hand side ends in **either** those project actions **or** Clerk's user
+ * menu, never both: with a project open the user menu is part of the canvas'
+ * participant group, where it sits beside the other people in the room.
  */
 export function EditorNavbar({
   isSidebarOpen,
@@ -107,19 +111,27 @@ export function EditorNavbar({
               size="icon"
               aria-expanded={isAiSidebarOpen}
               aria-label={
-                isAiSidebarOpen
-                  ? "Close AI design assistant"
-                  : "Open AI design assistant"
+                isAiSidebarOpen ? "Close AI workspace" : "Open AI workspace"
               }
               onClick={onToggleAiSidebar}
             >
               <Sparkles />
             </Button>
           </>
-        ) : null}
-
-        {/* Clerk's own menu — profile settings and sign-out, left as built. */}
-        <UserButton />
+        ) : (
+          /*
+           * Clerk's own menu — profile settings and sign-out, left as built.
+           *
+           * On the editor home only. With a project open the same button is rendered
+           * inside the canvas' participant group, next to the other people in the room,
+           * so that the current user appears **once**: leaving it here as well would
+           * show them twice, in two places, a few pixels apart.
+           *
+           * Nothing about the button itself changed, and neither did the project
+           * actions above — the menu moved, it was not replaced.
+           */
+          <UserButton />
+        )}
       </div>
     </header>
   );

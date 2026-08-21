@@ -13,6 +13,7 @@ import {
   CanvasConnectionError,
   CanvasLoading,
 } from "@/features/collaboration/canvas-connection-states";
+import { CanvasParticipants } from "@/features/collaboration/canvas-participants";
 
 /**
  * Puts the open project's workspace into its Liveblocks room and renders the
@@ -55,15 +56,44 @@ export function CanvasRoom({ projectId }: CanvasRoomProps) {
          */
         initialPresence={{ cursor: null, isThinking: false }}
       >
-        <CanvasConnectionBoundary>
+        {/*
+         * One positioning context for the canvas and the participant group that floats
+         * over its top-right corner. `h-full` resolves because the workspace's canvas
+         * region is `min-h-0 flex-1`, the same reason the canvas' own wrapper can fill
+         * it.
+         */}
+        <div className="relative h-full w-full">
+          <CanvasConnectionBoundary>
+            {/*
+             * The canvas suspends until Storage has loaded. On the server the fallback
+             * is what renders, which is correct — a room is joined from the browser.
+             */}
+            <ClientSideSuspense fallback={<CanvasLoading />}>
+              {/*
+               * The same ID the room was joined with, passed down rather than read
+               * again from the route, so the canvas snapshots the project whose room
+               * it is actually in.
+               */}
+              <ArchitectureCanvas projectId={projectId} />
+            </ClientSideSuspense>
+          </CanvasConnectionBoundary>
+
           {/*
-           * The canvas suspends until Storage has loaded. On the server the fallback
-           * is what renders, which is correct — a room is joined from the browser.
+           * Who is here, and the current user's account menu — **outside** the
+           * connection boundary and the canvas' suspense boundary, deliberately.
+           *
+           * While a project is open this is the only `UserButton` on screen, so it has
+           * to survive the states the canvas does not render in: profile and sign-out
+           * stay reachable while the room is connecting and if it permanently fails.
+           * The collaborator stack inside it has a suspense boundary of its own, so
+           * only the part that needs presence waits for presence.
+           *
+           * It is mounted inside `RoomProvider` because presence only exists in a
+           * room, which is also what makes it appear on a project canvas and nowhere
+           * else — the editor home has no room and therefore no participant group.
            */}
-          <ClientSideSuspense fallback={<CanvasLoading />}>
-            <ArchitectureCanvas />
-          </ClientSideSuspense>
-        </CanvasConnectionBoundary>
+          <CanvasParticipants />
+        </div>
       </RoomProvider>
     </LiveblocksProvider>
   );

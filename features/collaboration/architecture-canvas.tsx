@@ -23,8 +23,11 @@ import { canvasEdgeDefaults } from "@/features/canvas/canvas-edge-tokens";
 import { createCanvasNodeId } from "@/features/canvas/canvas-node-id";
 import { DEFAULT_CANVAS_NODE_COLOR } from "@/features/canvas/canvas-node-tokens";
 import { canvasNodeTypes } from "@/features/canvas/canvas-node";
+import { CanvasSnapshotStatusIndicator } from "@/features/canvas/canvas-snapshot-status";
 import { useStarterTemplatesContext } from "@/features/canvas/starter-templates-context";
 import { StarterTemplatesModal } from "@/features/canvas/starter-templates-modal";
+import { CollaboratorCursors } from "@/features/collaboration/collaborator-cursors";
+import { useCanvasSnapshot } from "@/hooks/use-canvas-snapshot";
 import { useCanvasTemplateImport } from "@/hooks/use-canvas-template-import";
 import type { CanvasEdge, CanvasNode } from "@/types/canvas";
 
@@ -41,6 +44,15 @@ import type { CanvasEdge, CanvasNode } from "@/types/canvas";
  */
 import "@xyflow/react/dist/base.css";
 
+interface ArchitectureCanvasProps {
+  /**
+   * The open project, which is also its Liveblocks room and the subject of its
+   * snapshots. It is passed down rather than read from the route, so the canvas
+   * cannot end up snapshotting a different project from the room it is joined to.
+   */
+  projectId: string;
+}
+
 /**
  * The architecture canvas — React Flow driven entirely by Liveblocks Storage.
  *
@@ -50,7 +62,7 @@ import "@xyflow/react/dist/base.css";
  * flow. `<ReactFlow>` reuses an existing store when it finds one, so there is still
  * only one.
  */
-export function ArchitectureCanvas() {
+export function ArchitectureCanvas({ projectId }: ArchitectureCanvasProps) {
   return (
     /*
      * React Flow sets `width: 100%; height: 100%` on its own wrapper and a caller
@@ -60,7 +72,7 @@ export function ArchitectureCanvas() {
      */
     <div className="h-full w-full bg-background">
       <ReactFlowProvider>
-        <CollaborativeFlow />
+        <CollaborativeFlow projectId={projectId} />
       </ReactFlowProvider>
     </div>
   );
@@ -76,15 +88,17 @@ export function ArchitectureCanvas() {
  * no local `useNodesState`, and no second copy of the diagram to keep in sync —
  * which is why a drop adds its node through `onNodesChange` too.
  *
- * Storage is the only home for canvas state. Nothing is written to PostgreSQL or
- * blob storage.
+ * Storage is the **authoritative** home for canvas state. A change is not written
+ * anywhere else from here: the snapshot hook below sends no canvas, it only asks the
+ * server to copy the room's own state to a file, and nothing is ever read back from
+ * that file into the room.
  *
  * `suspense: true` means `nodes` and `edges` are always arrays here — the hook
  * suspends until Storage has loaded, and the `ClientSideSuspense` in the room
  * wrapper shows the loading state meanwhile — so there is no `isLoading` branch
  * to render.
  */
-function CollaborativeFlow() {
+function CollaborativeFlow({ projectId }: ArchitectureCanvasProps) {
   const { nodes, edges, onNodesChange, onEdgesChange, onConnect, onDelete } =
     useLiveblocksFlow<CanvasNode, CanvasEdge>({
       suspense: true,
@@ -98,6 +112,16 @@ function CollaborativeFlow() {
     });
 
   const { screenToFlowPosition } = useReactFlow();
+
+  /*
+   * The background snapshot, driven by the same arrays the flow renders — which is
+   * why it is mounted here and not in the shell: these exist only inside the room.
+   *
+   * It reads them to notice that the document changed and nothing more. The request
+   * it makes carries no canvas, so this is not a second write path for a node or an
+   * edge, and the status it returns is local to this browser.
+   */
+  const snapshotStatus = useCanvasSnapshot({ projectId, nodes, edges });
 
   /*
    * Whether the starter template picker is open, from the editor shell — the picker
@@ -250,6 +274,29 @@ function CollaborativeFlow() {
        * follows the same tokens as the rest of the interface.
        */}
       <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="var(--border)" />
+
+      {/*
+       * The other people's pointers.
+       *
+       * Inside `<ReactFlow>`, because that is where the broadcast comes from: the
+       * component binds its pointer listeners to the flow's own pane, so the position
+       * it sends is a point on the diagram, and it reads this viewer's pan and zoom to
+       * place everybody else's. It is mounted **before** the two panels below so the
+       * cursors paint under them — a collaborator pointing at a component near the
+       * bottom-left should not cover this user's zoom controls.
+       *
+       * It changes nothing about nodes or edges. A cursor is presence only: it never
+       * reaches Storage, so it is not part of the document, and hover, selection, pan,
+       * and zoom stay local to whoever is doing them.
+       */}
+      <CollaboratorCursors />
+
+      {/*
+       * Whether the background snapshot is running, top-left — the one corner not
+       * already taken by presence, the control bar, or the component toolbar. It is a
+       * report rather than a control, so there is no Save button beside it.
+       */}
+      <CanvasSnapshotStatusIndicator status={snapshotStatus} />
 
       {/*
        * Zoom, fit view, and Liveblocks undo/redo, bottom-left. It also mounts the

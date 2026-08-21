@@ -133,6 +133,31 @@ export async function renameProjectForOwner(
 }
 
 /**
+ * Records where a project's latest canvas snapshot is.
+ *
+ * `canvasJsonPath` is the only field written, and it is a **reference** rather than
+ * canvas data: the canvas itself stays in Liveblocks Storage and in the Blob file
+ * this URL points at, so PostgreSQL gains no copy of the diagram.
+ *
+ * Unlike the rename and the delete, this is **not** scoped to an owner — a
+ * collaborator editing the canvas is also snapshotting it, and their access has
+ * already been resolved by the caller (invariant 6). It is an `updateMany` rather
+ * than an `update` so that a project deleted between that check and this write is a
+ * zero-row result the caller can report, not a thrown exception.
+ */
+export async function recordProjectCanvasSnapshot(
+  projectId: string,
+  canvasJsonPath: string
+): Promise<boolean> {
+  const { count } = await prisma.project.updateMany({
+    where: { id: projectId },
+    data: { canvasJsonPath },
+  });
+
+  return count > 0;
+}
+
+/**
  * Deletes a project, scoped to its owner for the same reason as the rename.
  * Collaborator rows go with it through the schema's `onDelete: Cascade`.
  *
