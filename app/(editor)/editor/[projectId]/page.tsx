@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 
 import { AccessDenied } from "@/components/editor/access-denied";
-import { CanvasPlaceholder } from "@/components/editor/canvas-placeholder";
+import { CanvasRoom } from "@/features/collaboration/canvas-room";
 import { SIGN_IN_URL } from "@/lib/auth-routes";
 import { resolveProjectAccess } from "@/lib/project-access";
 
@@ -20,7 +20,11 @@ import { resolveProjectAccess } from "@/lib/project-access";
  *
  * The chrome around this — the navbar, the project sidebar, and the AI panel —
  * comes from the `(editor)` layout, so this page contributes the canvas region
- * only. It holds no canvas logic yet.
+ * only: the collaborative canvas, and the Liveblocks room it lives in.
+ *
+ * The room is entered from `CanvasRoom`, on the client, because joining a room is
+ * a browser concern. The project ID this page already validated is what it is
+ * given, and that same ID is the room ID.
  */
 export default async function ProjectWorkspacePage({
   params,
@@ -36,5 +40,5 @@ export default async function ProjectWorkspacePage({
     return <AccessDenied />;
   }
 
-  return <CanvasPlaceholder />;
+  return <CanvasRoom projectId={access.project.id} />;
 }

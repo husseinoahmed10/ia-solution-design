@@ -6,6 +6,7 @@ import { useState, type ReactNode } from "react";
 import { AiSidebar } from "@/components/editor/ai-sidebar";
 import { EditorNavbar } from "@/components/editor/editor-navbar";
 import { ProjectSidebar } from "@/components/editor/project-sidebar";
+import { StarterTemplatesProvider } from "@/features/canvas/starter-templates-context";
 import { ShareProjectDialog } from "@/features/collaborators/share-project-dialog";
 import { CreateProjectDialog } from "@/features/projects/create-project-dialog";
 import { DeleteProjectDialog } from "@/features/projects/delete-project-dialog";
@@ -14,6 +15,7 @@ import type { ProjectSummary } from "@/features/projects/project-types";
 import { RenameProjectDialog } from "@/features/projects/rename-project-dialog";
 import { useProjectActions } from "@/hooks/use-project-actions";
 import { useShareDialog } from "@/hooks/use-share-dialog";
+import { useStarterTemplates } from "@/hooks/use-starter-templates";
 
 interface EditorShellProps {
   /** Fetched server-side by the editor layout, not by the sidebar. */
@@ -66,6 +68,16 @@ export function EditorShell({
    */
   const shareDialog = useShareDialog({ projectId: activeProject?.id ?? null });
 
+  /*
+   * The template picker's open state, keyed to the resolved project for the same
+   * reason the share dialog's is. The **picker itself is not mounted here**: it is
+   * rendered by the canvas, which is the only place that can perform the import, so
+   * the shell owns the flag and shares it downwards.
+   */
+  const starterTemplates = useStarterTemplates({
+    projectId: activeProject?.id ?? null,
+  });
+
   const closeSidebar = () => setIsSidebarOpen(false);
   const closeAiSidebar = () => setIsAiSidebarOpen(false);
 
@@ -77,6 +89,7 @@ export function EditorShell({
           onToggleSidebar={() => setIsSidebarOpen((open) => !open)}
           projectName={activeProject?.name ?? null}
           onShareProject={shareDialog.open}
+          onOpenTemplates={starterTemplates.open}
           isAiSidebarOpen={isAiSidebarOpen}
           onToggleAiSidebar={() => setIsAiSidebarOpen((open) => !open)}
         />
@@ -88,7 +101,17 @@ export function EditorShell({
          * content collapsing to its own height instead of filling the canvas.
          */}
         <div className="relative flex min-h-0 flex-1 overflow-hidden">
-          <main className="min-h-0 flex-1">{children}</main>
+          {/*
+           * The template picker's open state reaches the canvas from here rather than
+           * from the whole shell, because the canvas is the only thing that consumes
+           * it: the screens outside `main` — the sidebar, the AI panel, the project
+           * dialogs — have no canvas to import into.
+           */}
+          <main className="min-h-0 flex-1">
+            <StarterTemplatesProvider starterTemplates={starterTemplates}>
+              {children}
+            </StarterTemplatesProvider>
+          </main>
 
           {/*
            * Mobile only: the sidebar covers most of a narrow screen, so a scrim

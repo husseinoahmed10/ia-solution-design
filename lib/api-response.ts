@@ -39,3 +39,16 @@ export function notFoundResponse(): Response {
 export function conflictResponse(error: string): Response {
   return errorResponse(error, 409);
 }
+
+/**
+ * The server is missing configuration the request needs — a required environment
+ * variable, for instance.
+ *
+ * A `5xx` rather than a `4xx`, because the caller did nothing wrong and has
+ * nothing to correct: it is this deployment that is incomplete. Kept distinct from
+ * an unhandled exception so the message can say *what* is not configured without
+ * revealing a stack trace.
+ */
+export function configurationErrorResponse(error: string): Response {
+  return errorResponse(error, 500);
+}

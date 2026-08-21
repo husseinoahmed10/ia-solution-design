@@ -2,6 +2,7 @@
 
 import { UserButton } from "@clerk/nextjs";
 import {
+  LayoutTemplate,
   PanelLeftClose,
   PanelLeftOpen,
   Share2,
@@ -21,6 +22,8 @@ interface EditorNavbarProps {
   projectName?: string | null;
   /** Opens the share dialog. Rendered only with a project open. */
   onShareProject: () => void;
+  /** Opens the starter template picker. Rendered only with a project open. */
+  onOpenTemplates: () => void;
   isAiSidebarOpen: boolean;
   onToggleAiSidebar: () => void;
   className?: string;
@@ -31,16 +34,17 @@ interface EditorNavbarProps {
  * on the left, the open project's name in the centre, and the workspace actions
  * with Clerk's user menu on the right.
  *
- * The share button and the AI toggle belong to a project, so they appear only
- * once one is open. Share opens the share dialog for both an owner and a
- * collaborator — the dialog itself decides what each may do, from the server's
- * answer rather than from anything this bar knows.
+ * The templates entry point, the share button, and the AI toggle belong to a
+ * project, so they appear only once one is open. Share opens the share dialog for
+ * both an owner and a collaborator — the dialog itself decides what each may do,
+ * from the server's answer rather than from anything this bar knows.
  */
 export function EditorNavbar({
   isSidebarOpen,
   onToggleSidebar,
   projectName = null,
   onShareProject,
+  onOpenTemplates,
   isAiSidebarOpen,
   onToggleAiSidebar,
   className,
@@ -77,6 +81,22 @@ export function EditorNavbar({
       <div className="flex flex-1 items-center justify-end gap-2">
         {projectName ? (
           <>
+            {/*
+             * Templates sits before Share, and is a ghost button rather than an
+             * outlined one, because it acts on the canvas while Share acts on the
+             * project: the outlined button stays the one workspace-level action in the
+             * bar, and this reads as a canvas tool beside it.
+             *
+             * The label is shown as well as the icon, unlike the AI toggle. Opening a
+             * picker that can replace the whole architecture should not depend on
+             * recognising a glyph, and it is only hidden on the narrowest screens,
+             * where the accessible name carries it.
+             */}
+            <Button variant="ghost" size="sm" onClick={onOpenTemplates}>
+              <LayoutTemplate data-icon="inline-start" />
+              <span className="max-sm:sr-only">Templates</span>
+            </Button>
+
             <Button variant="outline" size="sm" onClick={onShareProject}>
               <Share2 data-icon="inline-start" />
               Share

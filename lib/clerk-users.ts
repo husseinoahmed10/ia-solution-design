@@ -1,4 +1,4 @@
-import { clerkClient } from "@clerk/nextjs/server";
+import { clerkClient, currentUser } from "@clerk/nextjs/server";
 
 /**
  * Clerk user lookup by email address.
@@ -13,6 +13,69 @@ import { clerkClient } from "@clerk/nextjs/server";
 export interface ClerkUserProfile {
   displayName: string | null;
   imageUrl: string | null;
+}
+
+/**
+ * How the current user is presented to the other people in a room. Unlike
+ * `ClerkUserProfile`, `displayName` is **not** nullable: a cursor with no label
+ * beside it is unusable, so a name is always resolved, if necessary from the
+ * user ID.
+ */
+export interface CurrentUserProfile {
+  displayName: string;
+  imageUrl: string | null;
+}
+
+/**
+ * The last resort for a display name.
+ *
+ * A Clerk user is not guaranteed to have a name, a username, or an email address,
+ * and the local part of an address is used before this — so this is reached only
+ * by an account carrying no human-readable field at all. It is deliberately the
+ * ID rather than a shared word like "Anonymous", so two such users are still told
+ * apart in a room.
+ */
+function fallbackDisplayName(userId: string): string {
+  return `User ${userId.slice(-6)}`;
+}
+
+/**
+ * The signed-in user's display name and avatar, or `null` when there is no
+ * session.
+ *
+ * The name walks Clerk's own fields in order of how human-readable they are —
+ * full name, username, then the local part of the primary email address — before
+ * falling back to a fragment of the user ID. Nothing is invented and nothing comes
+ * from this application's database: the fallback is always *some* value Clerk
+ * already holds, as the specification requires.
+ *
+ * An empty-string `imageUrl` becomes `null`, so a caller renders an initial rather
+ * than requesting an image that does not exist. `||` rather than `??` for exactly
+ * that reason — Clerk returns `""`, not `null`, for an absent image.
+ *
+ * This lives beside `findUserProfilesByEmail` because both ask Clerk who somebody
+ * is, which `architecture.md` confines to this module.
+ */
+export async function getCurrentUserProfile(): Promise<CurrentUserProfile | null> {
+  const user = await currentUser();
+
+  if (!user) {
+    return null;
+  }
+
+  const email = user.primaryEmailAddress?.emailAddress ?? null;
+  const emailLocalPart = email ? email.split("@")[0] : null;
+
+  const displayName =
+    user.fullName?.trim() ||
+    user.username?.trim() ||
+    emailLocalPart?.trim() ||
+    fallbackDisplayName(user.id);
+
+  return {
+    displayName,
+    imageUrl: user.imageUrl || null,
+  };
 }
 
 /** Clerk accepts at most 100 email addresses per `getUserList` filter. */
