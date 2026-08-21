@@ -1,9 +1,12 @@
 "use client";
 
 import { Pencil, Trash2 } from "lucide-react";
+import Link from "next/link";
+import { useParams } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
 import type { ProjectSummary } from "@/features/projects/project-types";
+import { cn } from "@/lib/utils";
 
 interface ProjectListItemProps {
   project: ProjectSummary;
@@ -19,6 +22,12 @@ interface ProjectListItemProps {
  *
  * They are revealed on hover and on keyboard focus, so tabbing to them makes
  * them visible.
+ *
+ * The name is the link that opens the workspace — this is how a project is
+ * opened from the sidebar, which is what the editor home directs the user to do.
+ * It addresses the project by `id` alone, so opening a project needs nothing
+ * derived from its name. The route still runs its own access check: this list is
+ * an affordance, not an authorisation.
  */
 export function ProjectListItem({
   project,
@@ -26,10 +35,22 @@ export function ProjectListItem({
   onDelete,
 }: ProjectListItemProps) {
   const isOwned = project.access === "owner";
+  /** `undefined` on `/editor`; the open workspace on `/editor/[projectId]`. */
+  const { projectId: activeProjectId } = useParams<{ projectId?: string }>();
+  const isActive = project.id === activeProjectId;
 
   return (
     <li className="group flex items-center gap-1 rounded-md px-2 py-1.5 hover:bg-accent focus-within:bg-accent">
-      <span className="min-w-0 flex-1 truncate text-sm">{project.name}</span>
+      <Link
+        href={`/editor/${project.id}`}
+        aria-current={isActive ? "page" : undefined}
+        className={cn(
+          "min-w-0 flex-1 truncate rounded-sm text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
+          isActive ? "font-medium text-foreground" : "text-muted-foreground"
+        )}
+      >
+        {project.name}
+      </Link>
 
       {isOwned ? (
         <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">

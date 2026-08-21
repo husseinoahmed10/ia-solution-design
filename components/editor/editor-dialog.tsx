@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import type { ReactElement, ReactNode } from "react";
 
 import {
   Dialog,
@@ -19,8 +19,13 @@ interface EditorDialogProps
   description?: ReactNode;
   /** Actions rendered in the footer, usually cancel plus a primary action. */
   footer?: ReactNode;
-  /** Optional trigger, composed with `asChild`. */
-  trigger?: ReactNode;
+  /**
+   * Optional trigger, composed with `asChild`.
+   *
+   * A single element, not `ReactNode`: `asChild` calls `React.Children.only`, so
+   * text or an array would throw at render time rather than fail to typecheck.
+   */
+  trigger?: ReactElement;
   contentClassName?: string;
 }
 

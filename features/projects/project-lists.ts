@@ -1,11 +1,10 @@
-import { currentUser } from "@clerk/nextjs/server";
-
 import {
   listProjectsForCollaborator,
   listProjectsForOwner,
 } from "@/features/projects/project-service";
 import { toProjectSummary } from "@/features/projects/project-summary";
 import type { ProjectSummary } from "@/features/projects/project-types";
+import { getCurrentIdentity } from "@/lib/clerk-identity";
 
 export interface ProjectLists {
   owned: ProjectSummary[];
@@ -22,26 +21,30 @@ const EMPTY_LISTS: ProjectLists = { owned: [], shared: [] };
  * pass somebody else's — the lists are always the current user's, which is the
  * server-side access check for this read (`architecture.md`, invariant 6).
  *
- * `currentUser()` is used rather than `auth()` because a collaborator is
- * identified by email address, and only the full user carries one. Clerk dedupes
- * it per request, so calling this from more than one component in a render is
- * a single Backend API call.
+ * `getCurrentIdentity()` reads `currentUser()` rather than `auth()` because a
+ * collaborator is identified by email address, and only the full user carries
+ * one. It is also where the address is lower-cased, so it matches the
+ * `ProjectCollaborator` rows an invite stored. Clerk dedupes the call per
+ * request, so reading it here as well as in `resolveProjectAccess()` is a single
+ * Backend API call.
  *
  * The two queries run together: neither depends on the other, so awaiting them in
  * sequence would only add latency.
  */
 export async function getProjectLists(): Promise<ProjectLists> {
-  const user = await currentUser();
+  const identity = await getCurrentIdentity();
 
-  if (!user) {
+  if (!identity) {
     return EMPTY_LISTS;
   }
 
-  const email = user.primaryEmailAddress?.emailAddress ?? null;
+  const { userId, primaryEmail } = identity;
 
   const [ownedProjects, sharedProjects] = await Promise.all([
-    listProjectsForOwner(user.id),
-    email ? listProjectsForCollaborator(email) : Promise.resolve([]),
+    listProjectsForOwner(userId),
+    primaryEmail
+      ? listProjectsForCollaborator(primaryEmail)
+      : Promise.resolve([]),
   ]);
 
   return {

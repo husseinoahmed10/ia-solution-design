@@ -30,3 +30,25 @@ export function forbiddenResponse(): Response {
 export function notFoundResponse(): Response {
   return errorResponse("Not found.", 404);
 }
+
+/**
+ * A valid request that conflicts with the current state — the record it would
+ * create already exists. Distinct from a `400`, because the input is well formed
+ * and the caller has nothing to correct.
+ */
+export function conflictResponse(error: string): Response {
+  return errorResponse(error, 409);
+}
+
+/**
+ * The server is missing configuration the request needs — a required environment
+ * variable, for instance.
+ *
+ * A `5xx` rather than a `4xx`, because the caller did nothing wrong and has
+ * nothing to correct: it is this deployment that is incomplete. Kept distinct from
+ * an unhandled exception so the message can say *what* is not configured without
+ * revealing a stack trace.
+ */
+export function configurationErrorResponse(error: string): Response {
+  return errorResponse(error, 500);
+}
