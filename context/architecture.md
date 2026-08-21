@@ -10,7 +10,7 @@
 | Authentication | Clerk | User sign-in and route protection |
 | Collaboration | Liveblocks | Project workspace rooms, keyed by project ID |
 | Database | PostgreSQL with Prisma | Projects, documents, requirements, designs, findings, and output metadata |
-| File storage | Vercel Blob | Uploaded source files and generated build-pack files |
+| File storage | Vercel Blob | Uploaded source files, generated build-pack files, and canvas snapshots |
 | Background jobs | Trigger.dev | Document extraction, AI generation, validation, and build-pack tasks |
 | AI | Vercel AI SDK with Google Gemini | Structured requirement and design generation |
 | Validation | Zod | Runtime validation for API input, task payloads, stored JSON, and AI output |
@@ -24,8 +24,8 @@ Authentication, storage, and AI calls must be isolated behind small service modu
 
 - `app/` — routes, layouts, server components, and route handlers.
 - `components/` — reusable UI and feature components. Do not place database or provider logic here.
-- `features/` — project, document, requirement, canvas, standards, and build-pack domain logic. `features/canvas/` holds what a canvas is drawn *from* — the component catalogue, the shared token maps, the node and edge renderers, and the toolbar — while `features/collaboration/` holds the room and the React Flow instance the canvas lives *in*.
-- `lib/` — shared infrastructure such as Prisma, authentication, storage, AI, and validation helpers.
+- `features/` — project, document, requirement, canvas, standards, and build-pack domain logic. `features/canvas/` holds what a canvas is drawn *from* — the component catalogue, the shared token maps, the node and edge renderers, and the toolbar — plus the snapshot format, its service, and its browser client, while `features/collaboration/` holds the room and the React Flow instance the canvas lives *in*. `features/ai-workspace/` holds the AI panel's contents — the AI Architect conversation and the specifications list — while the panel shell itself is `components/editor/ai-sidebar.tsx`, because its open state belongs to the editor chrome.
+- `lib/` — shared infrastructure such as Prisma, authentication, storage, AI, and validation helpers. `lib/blob.ts` is the Vercel Blob adapter and the only module that calls the Blob SDK, alongside `lib/liveblocks.ts` for rooms and `lib/prisma.ts` for the database.
 - `trigger/` — long-running Trigger.dev tasks only.
 - `prisma/` — database schema and migrations.
 - `context/` — persistent project context and feature specifications.
@@ -35,9 +35,12 @@ Authentication, storage, and AI calls must be isolated behind small service modu
 ## Storage Model
 
 - **PostgreSQL** stores structured data and relationships: projects, users, document metadata, extracted sections, requirements, requirement sources, architecture versions, components, connections, findings, task runs, and generated-output metadata.
-- **Vercel Blob** stores original uploaded files and generated Markdown or JSON files.
+- **Vercel Blob** stores original uploaded files, generated Markdown or JSON files, and canvas snapshots.
+- **Liveblocks Storage** holds the live collaborative canvas, and is authoritative for it. Neither PostgreSQL nor Blob is the primary canvas store.
 - Large files are not stored directly in PostgreSQL.
 - The database stores the blob URL, file name, checksum, size, type, and project relationship.
+- **All Blob reads and writes are server-side, through `lib/blob.ts`.** The read/write token is never sent to the browser, nothing is uploaded directly from a client, and a stored Blob URL is not returned to a client that has no use for it. Blobs are written with `access: "private"`, because a pathname derived from a project ID is guessable and project data is access-controlled.
+- `BLOB_READ_WRITE_TOKEN` is read at call time rather than at module scope, so a missing credential fails the request that needs it with a clear configuration error and does not fail `npm run build`. This is the same lazy-credential pattern as `LIVEBLOCKS_SECRET_KEY`.
 
 ## Authentication and Access
 
@@ -102,10 +105,20 @@ Authentication, storage, and AI calls must be isolated behind small service modu
 - **The user's identity on a session is set server-side**: the Clerk user ID identifies it, and the name, avatar, and colour are read from Clerk in the route, never accepted from the client. A display name falls back through Clerk's own fields — full name, username, the local part of the primary email, then a fragment of the user ID — so it always resolves without inventing anything.
 - **`lib/liveblocks-cursor-color.ts` maps a Clerk user ID to a colour deterministically**, with FNV-1a over a fixed eight-value palette. The same user is the same colour in every room and in every session, with nothing stored. The values are literal hex rather than `var(--token)` references, because a cursor colour is data that travels to other clients where a CSS variable could not resolve.
 - If `LIVEBLOCKS_SECRET_KEY` is absent, the auth route answers `500` with a clear configuration message rather than failing opaquely. It is the one `5xx` any route returns deliberately, through `configurationErrorResponse`.
+- **A collaborator's identity is read from their session's own `info`**, through `useOther(connectionId, (other) => other.info)`. `useUser` is not usable and must not be introduced without a decision to change this: it resolves a user through a `resolveUsers` callback on `LiveblocksProvider`, which this application deliberately does not have — identity travels with the token instead, so a client can neither name nor colour itself and nothing read from presence is untrusted input.
+- **Presence is subscribed by connection ID, never as a whole.** A list of participants selects `others.map((other) => other.connectionId)` with `shallow`, and each avatar then subscribes to its own collaborator. Presence changes as often as a cursor moves, so a plain `useOthers()` would re-render every participant many times a second; a list of IDs changes only when somebody joins or leaves.
+- **`features/collaboration/canvas-participants.tsx` is the participant group**, mounted inside `RoomProvider` but **outside** the connection boundary and the canvas' suspense boundary. While a project is open it holds the application's only `UserButton`, so profile and sign-out have to survive the states the canvas does not render in. The collaborator stack inside it has a suspense boundary of its own.
+- **The current user's `UserButton` is rendered in exactly one place at a time.** `components/editor/editor-navbar.tsx` renders it only when no project is open; with a project open it belongs to the participant group. Do not add a second one — the requirement is that the current user appears once.
+- **`@liveblocks/react-flow`'s `Cursors` owns cursor presence**, mounted as `features/collaboration/collaborator-cursors.tsx` inside `<ReactFlow>`. It both broadcasts this client's pointer and renders everybody else's, and this application supplies only the `Cursor` appearance. Do not hand-roll a second implementation of either half.
+- **It writes the existing `cursor` presence key**, its own default, as a partial update — so `isThinking` is untouched and the `Presence` contract in `liveblocks.config.ts` needs no change to support cursors.
+- **A cursor is stored in React Flow coordinates**, converted with `screenToFlowPosition` on the same flow instance the drop handler uses, and converted back with each viewer's own pan and zoom. A cursor is a point on the *diagram*, not on a screen, which is what makes it correct between two clients at different zoom levels.
+- **`cursor` is set to `null` when the pointer leaves the flow, when the window loses focus, and on unmount.** A stale cursor pointing at something its owner walked away from is worse than none.
+- **Cursor movement is presence only.** It is never written to Liveblocks Storage, so it is not part of the document, and nothing about it reaches PostgreSQL. **Cursor coordinates are the only collaborative presence data** — zoom, pan, viewport, hover, and selection stay client-local, per the viewport rule below. Do not add a cursor trail or a history of positions.
+- `@liveblocks/react-flow/styles.css` is imported by that component alone. It is one structural rule — the layer's position, clipping, and `pointer-events: none` — and Liveblocks' own component styles are deliberately not imported, since the cursor is this application's own.
 
 ### Collaborative canvas
 
-- **Liveblocks Storage is the only home for canvas state.** There is no PostgreSQL or blob copy of the nodes and edges, so there is one writable canvas per project and nothing to reconcile. `ArchitectureVersion`, `ArchitectureComponent`, and `ArchitectureConnection` remain in the domain records above for the approved-version model, which is a separate concern from the live canvas.
+- **Liveblocks Storage is the only *writable* home for canvas state.** There is one writable canvas per project and nothing to reconcile: no client keeps a second copy, and no PostgreSQL row holds a node or an edge. The Blob snapshot described under "Canvas snapshots" below is a read-only derivative that nothing writes back, so it does not make Blob a second canvas store. `ArchitectureVersion`, `ArchitectureComponent`, and `ArchitectureConnection` remain in the domain records above for the approved-version model, which is a separate concern from the live canvas.
 - **`@liveblocks/react-flow`'s `useLiveblocksFlow` owns the React Flow state.** It is the controlled-flow pattern: the nodes and edges it returns come from Storage and its handlers write back to it, so there is no local `useNodesState` and no second copy of the diagram. Do not add one.
 - **`Storage.flow` is typed from the canvas' own node and edge types**, `CanvasNode` and `CanvasEdge` in `types/canvas.ts`, rather than hand-modelled — the hook stores a `LiveObject` of two `LiveMap`s under its default `"flow"` key, and describing that from the React Flow types is what keeps the document and what is rendered from drifting apart.
 - **The key is optional**, for two reasons: a room nobody has opened has no `flow` yet and the hook creates it on first load, and a required key would make `initialStorage` a required `RoomProvider` prop — a second, competing initialiser for the same tree.
@@ -129,6 +142,21 @@ Authentication, storage, and AI calls must be isolated behind small service modu
 - **The viewport is client-local and is not persisted.** Zoom, pan, and fit view are React Flow's own viewport methods, called with a duration from `canvas-control-tokens.ts`, and nothing about them is written to Storage, to Presence, or to PostgreSQL. Nobody else's view moves, and opening a project starts from the initial fit. Collaborative viewport syncing is not a feature this canvas has.
 - **`hooks/use-keyboard-shortcuts.ts` holds no canvas dependency.** The control bar passes it the viewport and history actions, so the hook imports neither React Flow nor Liveblocks and a key runs the same call as the button beside it. It listens on `window` — React Flow's viewport is not focusable — and ignores an event whose target is, or is inside, an `input`, `textarea`, `select`, or `contenteditable`, which is what keeps the label editors typable. It calls `preventDefault()` only on a keypress it handles, so `Cmd/Ctrl + =` and `Cmd/Ctrl + -` remain the browser's page zoom.
 
+### Canvas snapshots
+
+- **A snapshot is a secondary, read-only copy of the canvas.** Liveblocks Storage stays authoritative; the snapshot exists so that recovery, export, standards validation, and AI features can read a canvas without joining a room.
+- **The snapshot source is the room, never the client.** `PUT /api/projects/[projectId]/canvas` takes **no request body**: it reads the authoritative Storage tree server-side through `lib/liveblocks.ts`'s `getProjectRoomStorageJson`, which calls `getStorageDocument(roomId, "json")`. **Do not accept nodes and edges from a browser as the snapshot source** — a client's arrays are one participant's view of a document several people are writing.
+- **The route requires a Clerk session and resolves access with `resolveProjectAccess`.** An owner **or** a collaborator may snapshot, since both may edit the canvas. An unauthenticated caller gets `401`; a missing or inaccessible project is `404` for both, as everywhere else.
+- **The snapshot format is versioned from the first snapshot**, in `features/canvas/canvas-snapshot.ts`: `version`, `projectId`, `capturedAt` as an ISO-8601 string, and `storage` — the Liveblocks Storage JSON verbatim. It holds no second model of a node or an edge, so it cannot drift from the document it came from, and a reader must check `version` before interpreting `storage`.
+- **The Blob pathname is `projects/<projectId>/canvas.json`** — project-specific, so a snapshot is unambiguously associated with its project, and stable, so each capture replaces the previous file rather than accumulating files nothing deletes. The project ID interpolated into it is the one the database returned, not a request URL segment.
+- **`Project.canvasJsonPath` holds the latest snapshot's Blob URL and nothing else.** It is a reference, not canvas data, and there is no second canvas URL or path field. It is written by `recordProjectCanvasSnapshot`, which is deliberately *not* owner-scoped — a collaborator snapshots too, and their access has already been resolved by the route.
+- **The order is read, upload, then record**, so `canvasJsonPath` never points at a file that does not exist. Nothing is retried or compensated: a snapshot is secondary, so a failure loses nothing and is reported rather than worked around.
+- **Snapshots are triggered by change, debounced, from `hooks/use-canvas-snapshot.ts`.** The hook is mounted inside the room, below `useLiveblocksFlow`, because that is where the collaborative arrays exist. It sends no canvas — only the project ID, in the URL.
+- **A snapshot is never fired on mount.** Opening a project is not a change to it. The hook records a baseline signature on first sight of a canvas, and again whenever the project changes, so the first snapshot of a session is the consequence of the first edit.
+- **Change is detected from a signature over document fields only** — a node's ID, type, position, size, and `data`; an edge's ID, endpoints, handles, type, and `data`. React Flow's transient per-viewer fields (`selected`, `dragging`, `measured`) are deliberately excluded, so a selection click costs no snapshot, and the array identities themselves cannot be the trigger: the status change a snapshot causes would re-render, produce fresh identities, and loop forever.
+- **Snapshot status is local UI state.** `idle | saving | saved | error`, per browser, never written to Presence or Storage, so nobody else's indicator moves. There is **no manual Save button** — the canvas is already saved in the room, so the indicator is a report, not a control.
+- **Nothing loads a snapshot back into a room.** Not on editor startup, not on an empty canvas, not ever in this unit. **An empty Liveblocks canvas is valid state, not missing data**, and restoring over it would resurrect components somebody deliberately deleted. Snapshot recovery, snapshot history, and a manual restore are later units.
+
 ## Background and AI Model
 
 - Normal request handlers validate input, check access, create task records, and trigger work.
@@ -136,6 +164,8 @@ Authentication, storage, and AI calls must be isolated behind small service modu
 - Trigger.dev tasks receive IDs and references, not unrestricted client state.
 - AI returns structured data validated with Zod before persistence.
 - The application database is the source of truth; Markdown is a generated output.
+- **The AI workspace UI exists ahead of the provider, and nothing in `features/ai-workspace/` reaches one.** There is no AI route handler, no Vercel AI SDK client, no Gemini call, and no streaming; the AI Architect's conversation is client-local React state in `hooks/use-ai-architect-chat.ts`, unpersisted and lost on unmount, and no message produces a reply. When a provider is wired up it belongs behind a service module in `lib/` per the isolation rule above, not inside these components.
+- **`Presence.isThinking` is still written by nothing.** It is reserved for the AI activity this panel does not yet have, so a collaborative thinking state is a later unit rather than something the workspace shell may set.
 
 ## Core Domain Records
 

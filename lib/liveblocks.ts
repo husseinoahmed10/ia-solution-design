@@ -1,6 +1,9 @@
 import { Liveblocks, LiveblocksError } from "@liveblocks/node";
 
-import type { ProjectUserInfo } from "@/liveblocks.config";
+import type {
+  ProjectRoomStorageJson,
+  ProjectUserInfo,
+} from "@/liveblocks.config";
 
 /**
  * The Liveblocks room behind a project workspace.
@@ -133,6 +136,29 @@ export async function ensureProjectRoom(projectId: string): Promise<void> {
   await getLiveblocksClient().getOrCreateRoom(projectId, {
     defaultAccesses: [],
   });
+}
+
+/**
+ * Reads the current contents of a project room's Storage tree, as plain JSON.
+ *
+ * This is how the server sees the **authoritative** canvas. Liveblocks Storage is
+ * the only home for canvas state, so a snapshot is taken from here rather than from
+ * nodes and edges a browser sent up: a client's copy is one participant's view of a
+ * document several people are writing, and it could not be trusted as the canvas
+ * even if it happened to be current.
+ *
+ * `format: "json"` rather than the default plain-LSON, because a snapshot is meant
+ * to be read later by recovery, export, standards validation, and AI features, and
+ * none of those needs to know which nodes were `LiveMap`s. The conversion is lossy
+ * in exactly that respect and in no other.
+ *
+ * A room nobody has drawn in answers with an empty tree, which is a valid canvas
+ * rather than an error — nothing here treats an empty canvas as missing data.
+ */
+export async function getProjectRoomStorageJson(
+  projectId: string
+): Promise<ProjectRoomStorageJson> {
+  return getLiveblocksClient().getStorageDocument(projectId, "json");
 }
 
 /**

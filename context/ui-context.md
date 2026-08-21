@@ -321,7 +321,7 @@ The application uses two main views.
 
 ### Project workspace
 
-- Top bar with project name, lifecycle state, save status, and primary action.
+- Top bar with project name, lifecycle state, and primary action.
 - Left sidebar for documents, requirements, questions, architecture versions, findings, and outputs.
 - Centre workspace for the selected view, including the architecture canvas.
 - Right properties panel when a requirement, component, or finding is selected.
@@ -885,12 +885,137 @@ anything.
 There is no template creating, saving, editing, category, or
 search. These are read-only predefined architectures.
 
+### Participant presence
+
+Who is in a project workspace is a third floating group, in the
+canvas' **top-right corner** — the same bordered pill on `--card`
+with a shadow and a backdrop blur as the component toolbar and the
+control bar, so it reads as another canvas overlay rather than as
+navbar chrome. It is `z-20`: above React Flow's own panel layer,
+below the two side panels.
+
+It reads left to right as a row of equals: the **other people in the
+room**, a subtle inset rule, then the **current user**. With nobody
+else connected the collaborators and the rule are both absent and
+only the current user remains — the divider never appears with
+nothing to divide.
+
+The current user is Clerk's `UserButton`, with its profile and
+sign-out flows exactly as built. **It is the same single button that
+sits in the navbar on the editor home**: with a project open it moves
+here, so the person looking at the screen appears once rather than
+twice, and the navbar's own project actions are untouched. Presence
+belongs to an open room, which is why the group exists only on a
+project canvas and not on the editor home, where there is nobody to
+show.
+
+The collaborators come from Liveblocks `useOthers`, so the current
+user cannot appear among them, and each is an `Avatar` showing their
+Clerk image with **two-letter initials** as the fallback. Each avatar
+carries a 2px ring in that person's own cursor colour, which both
+separates the overlapping circles and keeps a dark profile picture
+from dissolving into the canvas behind it. Up to **five** faces are
+shown; the rest become a muted `+N` chip, so the count is complete
+even when the faces are not. Both numbers live in
+`features/collaboration/presence-tokens.ts`, because the stack and
+the group around it must agree on them.
+
+**Collaborator avatars are display-only.** They are not buttons, have
+no menu, and do nothing on click — this group says who is here, and
+acting on a person is the share dialog's job.
+
+The avatar diameter is an **inline `width`/`height`** rather than a
+size utility, which is the exception this group needs: half of it is
+Clerk's `UserButton`, whose own stylesheet is unlayered and so beats
+a layered Tailwind utility. Our avatars take the same inline value so
+one number sizes both halves. The ring is inline for the same kind of
+reason — the colour is data, and `AvatarGroup`'s own
+`ring-background` variant outranks a plain class on the child.
+
+The group is mounted **beside** the canvas rather than inside the
+flow, so the account menu stays reachable while the room is
+connecting and if it permanently fails. Only the collaborator stack
+waits for presence, behind a `null` fallback: a skeleton would imply
+somebody is there before the room can say whether anybody is.
+
+### Canvas snapshot status
+
+Whether the canvas is being copied to its snapshot file shows in the
+canvas' **top-left corner**: `Saving…` with a spinner, `Saved` with a
+tick, or `Save failed` with a warning triangle. It is a React Flow
+`Panel` carrying `nodrag nopan nowheel`, on the same bordered `--card`
+pill with a shadow and a backdrop blur as every other canvas overlay,
+so it reads as one of them. Top-left because it is the only free
+corner: presence is top-right, the control bar bottom-left, and the
+component toolbar bottom-centre.
+
+Its contents are deliberately quieter than a control's — `text-xs` in
+`--muted-foreground`, a `size-3.5` icon, no button, and **no colour
+for the failure state**. A failed snapshot is marked by its icon
+alone: the canvas itself is safe in the room, so a red pill would
+overstate it.
+
+**Save status lives here rather than in the workspace top bar.** It is
+derived from the collaborative nodes and edges, which exist only
+inside the room, while the navbar is rendered by the editor shell
+above and outside it. Keeping it on the canvas also puts it beside
+the thing it reports on.
+
+**There is no Save button anywhere on the canvas.** Every change is
+already in Liveblocks Storage the moment it is made and the snapshot
+is taken automatically, so this is a report and not a control. A
+canvas nobody has changed this session shows **nothing at all** —
+`Saved` before the first edit would claim a snapshot that was never
+taken.
+
+Announced through `role="status"` with `aria-live="polite"`, so it
+never interrupts a screen reader mid-sentence for a background save.
+
+### Live cursors
+
+Where each collaborator is pointing is drawn on the canvas itself: a
+small arrow filled with that person's cursor colour, outlined in
+`--background` so it stays visible over a coloured node, with their
+**display name** in a badge beside it. The badge takes the same
+colour with `--background` type on it, because the eight cursor
+colours are all light saturated hues where dark text is what stays
+legible. The name is always shown — two people in a busy room can
+share a colour, so a colour alone would be ambiguous.
+
+The name badge hangs off the arrow's tail rather than covering the
+point being indicated, and the cursor layer is transparent to the
+pointer, so nobody else's cursor can intercept a click. Cursors paint
+**under** the canvas' overlay pills: a collaborator pointing into the
+bottom-left corner does not cover this user's zoom controls.
+
+A cursor position is stored and broadcast in **React Flow
+coordinates**, so it is a point on the *diagram* rather than on
+somebody's screen, and it is converted back with each viewer's own
+pan and zoom. Two people at different zoom levels looking at
+different parts of the architecture therefore see the pointer over
+the same component. A pointer that leaves the canvas clears to
+`null`, so nobody is left pointing at something they walked away
+from, and the current user's own cursor is never drawn.
+
+**A cursor is presence and nothing else.** Zoom, pan, viewport,
+hover, and selection stay local to whoever is doing them, and there
+is no cursor trail. Nothing about a cursor is written to the
+document.
+
 ### Workspace navbar
 
 The navbar has three equal sections. The left one carries the
 project sidebar toggle; the centre shows the open project's
 **name** as a truncating `text-sm font-semibold` heading; the
-right holds the project actions and then Clerk's user menu.
+right holds either the project actions or Clerk's user menu.
+
+The right-hand side ends in one or the other, never both.
+With a project open the user menu is part of the canvas'
+participant group above, beside the other people in the room,
+so the current user is shown **once**; on the editor home,
+where there is no room, it stays in the navbar. The menu moved
+— it was not replaced, and the project actions beside it did
+not change.
 
 The project name and the project actions — the starter
 templates entry point, share, and the AI sidebar toggle —
@@ -952,19 +1077,65 @@ close action, which swaps its icon and label to `Copied!` for
 two seconds. It is deliberately **not** a submit, so copying a
 link does not dismiss the dialog the user is still working in.
 
-### AI design assistant panel
+### AI workspace panel
 
 The right-hand panel mirrors the project sidebar's overlay
 mechanics: a positioned `<aside>` inside the canvas region on
 `bg-card` with a `border-l`, sliding between
 `translate-x-full` and `translate-x-0`, and `inert` plus
-`aria-hidden` while closed so its controls stay out of the tab
-order. Opening it therefore never reflows the canvas.
+`aria-hidden` while closed so its controls — which now include
+a text field — stay out of the tab order. Opening it therefore
+never reflows the canvas.
 
 It opens and closes from the navbar toggle, which is also
 where it is scoped: the panel is mounted only with a project
 open, so leaving a workspace cannot strand an open panel with
 no control left to close it.
+
+Its header is a `Bot` icon in a `size-8` `rounded-lg`
+`bg-brand-surface` square — the same tinted-square treatment
+as the auth brand panel's feature rows, so an AI surface is
+marked with tokens the theme already has — beside the title
+**AI Workspace** and the muted subtitle **Design your
+automation solution**, with the close button on the right.
+
+Below it the panel is a `Tabs` group: **AI Architect** and
+**Specs**, the primitive exactly as generated, so the active
+trigger takes the accent surface and `--foreground` while the
+inactive one stays muted, matching the project sidebar's tabs.
+
+**AI Architect** is a scrollable conversation over the chat
+input. With no messages it shows a centred empty state — the
+same tinted bot square, a muted line saying the AI Architect
+will help design this project's IA solution, and three
+starter-prompt chips. The chips are `disabled`, like every
+other action whose behaviour is not implemented yet: they are
+suggestions of what the assistant will be asked, not controls.
+
+A **user** message is right-aligned in a `rounded-xl` bubble
+on `--primary` with `--primary-foreground` text; an
+**assistant** message is left-aligned on the elevated
+`--popover` surface with a `--border` edge and `--foreground`
+text. Both are drawn although only user messages exist yet, so
+the two sides of a conversation are described in one place.
+
+The input is a `Textarea` growing with what is typed between
+roughly 72px and 160px and then scrolling, which is the
+primitive's own `field-sizing-content` bounded by a minimum and
+a maximum rather than a height measured in JavaScript, with the
+native resize grip dropped. `Enter` submits and `Shift+Enter`
+inserts a newline. **Submitting calls nothing** — the message
+appears locally and no reply is generated.
+
+**Specs** is a full-width `Generate Spec` button over the list
+of specifications, which holds one static example card:
+`Solution Architecture Specification`, a file icon, a short
+description of an automation solution design, and a disabled
+download. The card sits on `--popover` because the panel around
+it is already `--card`, where the `Card` primitive's own ring
+alone would leave it reading as part of the panel. Both the
+generate and the download actions are `disabled`; nothing is
+generated, stored, or downloaded yet.
 
 ### Access denied
 

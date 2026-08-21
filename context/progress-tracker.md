@@ -9,6 +9,140 @@ change.
 
 ## Current Goal
 
+- **Unit 21 — Canvas snapshot persistence
+  (`context/feature-specs/21-canvas-snapshot-persistence.md`) — code
+  complete (2026-08-21).** A project's canvas is now copied to a
+  **secondary JSON snapshot** in Vercel Blob as it is edited, and
+  **Liveblocks Storage is still authoritative**. The new
+  **`PUT /api/projects/[projectId]/canvas`** takes **no request body**:
+  it authenticates with Clerk, resolves access through the existing
+  `resolveProjectAccess` (owner **or** collaborator; `404` for a
+  missing or inaccessible project), reads the room's own Storage
+  server-side via `getStorageDocument(projectId, "json")`, wraps it as
+  a versioned snapshot — `version`, `projectId`, `capturedAt`, and the
+  Storage JSON verbatim — uploads it to
+  `projects/<projectId>/canvas.json`, and records the returned URL in
+  the **existing `Project.canvasJsonPath`**. **Nodes and edges are
+  never accepted from the client as the snapshot source**, and the
+  response is `{ capturedAt }` — never the Blob URL. Blob work is
+  entirely server-side behind the new `lib/blob.ts` adapter, written
+  `access: "private"` because the pathname is guessable, with
+  `BLOB_READ_WRITE_TOKEN` read at call time so a missing credential
+  fails the request and not `npm run build`. **No environment file was
+  created, modified, inspected, or printed.** On the client,
+  `hooks/use-canvas-snapshot.ts` watches the collaborative nodes and
+  edges, debounces **1500ms**, and calls the route with only the
+  project ID; it detects change from a **signature over document fields
+  only** (`selected`, `dragging`, and `measured` excluded), which is
+  what stops a `saving`→`saved` re-render from looping forever, and it
+  **fires nothing on mount** — the first snapshot of a session is the
+  consequence of the first edit. Status is local UI state
+  (`idle | saving | saved | error`) shown as a subtle top-left canvas
+  pill: `Saving…`, `Saved`, `Save failed`, and nothing while idle.
+  **No Save button was added**, and **nothing is ever loaded back into
+  a room** — an empty Liveblocks canvas is valid state, and recovery is
+  a later unit. `useLiveblocksFlow`, `Storage.flow`, the room ID, every
+  node and edge mutation, starter templates, presence, cursors, the AI
+  sidebar, and the Prisma schema are untouched; `@vercel/blob 2.8.0` is
+  the one dependency added. `npx next typegen`, `npx tsc --noEmit`,
+  `npm run lint`, and `npm run build` all pass, now reporting
+  **twelve** routes plus `ƒ Proxy (Middleware)`. **Not opened in a
+  browser, and no snapshot has ever been written** — no Blob credential
+  is configured here; see *Unit 21* under Completed.
+- **Unit 20 — AI sidebar shell
+  (`context/feature-specs/20-ai-sidebar-shell.md`) — code complete
+  (2026-08-21).** The right-hand placeholder is now a **proper AI
+  workspace**, and it is still only a workspace: **no AI, no provider,
+  no route, and no streaming** were added. `components/editor/ai-sidebar.tsx`
+  keeps every mechanic it had — `EditorShell` still owns `isOpen`, the
+  navbar's `Sparkles` toggle still opens it, and the `<aside>` is the
+  same `absolute inset-y-0 right-0 z-40 w-80` overlay on `bg-card` with
+  its `border-l`, its `translate-x-full`→`translate-x-0` slide, and
+  `inert` plus `aria-hidden` while closed, which now matters more
+  because the panel contains a text field. It gained a header — a `Bot`
+  icon in a `bg-brand-surface` square, **`AI Workspace`**, the muted
+  subtitle **`Design your automation solution`**, and the close button —
+  and a `Tabs` group of **`AI Architect`** and **`Specs`**, the
+  primitive exactly as generated, so the active trigger is the same
+  accent treatment the project sidebar's tabs use. The tab contents are
+  a new `features/ai-workspace/`: `ai-architect-panel.tsx` (a
+  `ScrollArea` conversation over the composer, with an empty state of
+  the same bot square, a muted line, and three **disabled**
+  starter-prompt chips from `ai-architect-prompts.ts`),
+  `ai-chat-composer.tsx` (a `Textarea` auto-sizing between **72px and
+  160px** through the primitive's own `field-sizing-content`, `Enter`
+  to submit and `Shift+Enter` for a newline, with a send button
+  disabled on a blank draft), `ai-chat-message.tsx` (a right-aligned
+  `--primary` bubble for a user message and a left-aligned
+  `--popover`-with-a-border one **prepared** for an assistant), and
+  `ai-specs-panel.tsx` (a disabled `Generate Spec` over one static
+  `Solution Architecture Specification` card with a file icon and a
+  disabled download). **Submitting appends the message locally and
+  nothing else** — no reply is generated, and the conversation lives in
+  `hooks/use-ai-architect-chat.ts`, which is mounted at the sidebar
+  rather than inside the tab because Radix `Tabs` unmounts the inactive
+  panel and would otherwise discard both the messages and a half-typed
+  draft. Nothing reaches Liveblocks, Presence, or PostgreSQL, and
+  **`isThinking` is still written by nothing**. No token was added — the
+  header square reuses `--brand-surface` from the auth panel — no
+  primitive was installed or restyled, and **no dependency was
+  installed**. The canvas, the room, live cursors, the participant
+  group, Templates, Share, the project sidebar, and the `UserButton`
+  are untouched; the navbar changed by **one string**, its toggle's
+  `aria-label`, so the accessible name matches the panel's new title.
+  `npx next typegen`, `npx tsc --noEmit`, `npm run lint`, and
+  `npm run build` all pass, reporting the same **eleven** routes plus
+  `ƒ Proxy (Middleware)`. **Not opened in a browser** — see *Unit 20*
+  under Completed.
+- **Unit 19 — Presence avatars and live cursors
+  (`context/feature-specs/19-presence-avatars-cursor.md`) — code
+  complete (2026-08-21).** A project canvas now shows **who is in it
+  and where they are pointing**. A third floating pill, in the canvas'
+  **top-right** corner on the same bordered-`--card` surface as the
+  component toolbar and the control bar, holds the other people in the
+  room, a subtle inset rule, and then the current user — and with
+  nobody else connected, the avatars *and* the rule are both absent,
+  so an empty divider never appears.
+  `features/collaboration/collaborator-avatar-stack.tsx` reads
+  **`useOthers`**, so the current user cannot be listed twice, and its
+  selector returns **connection IDs only** compared with `shallow`,
+  with each avatar then subscribing through `useOther` — presence
+  changes as often as a cursor moves, and a plain `useOthers()` would
+  re-render the whole stack many times a second. Each collaborator is
+  the existing `Avatar` primitive showing their Clerk image with
+  **two-letter initials** as the fallback, ringed in that person's own
+  cursor colour, **five** faces at most with the remainder as a muted
+  `+N` chip. Identity comes from the session's own `other.info` — the
+  name, avatar, and colour the auth route already attaches — because
+  `useUser` needs a `resolveUsers` callback this application
+  deliberately does not have. The current user is the **existing Clerk
+  `UserButton`, moved rather than duplicated**: the navbar now renders
+  it only when no project is open, which is what satisfies "shown
+  once"; Templates, Share, and the AI toggle are untouched, and the
+  editor home is unchanged. The group is mounted **outside** the
+  connection boundary and the canvas' suspense boundary, so profile
+  and sign-out stay reachable while the room connects and if it fails.
+  Live cursors are **`@liveblocks/react-flow`'s own `Cursors`**,
+  mounted inside `<ReactFlow>` as
+  `features/collaboration/collaborator-cursors.tsx` with only the
+  `Cursor` appearance supplied — an arrow filled with the
+  collaborator's colour, outlined in `--background`, with their name in
+  a badge of the same colour. It writes the **existing `cursor`
+  presence key** as a partial update, so `isThinking` is untouched and
+  **`liveblocks.config.ts` did not change**; the coordinates are React
+  Flow's, through `screenToFlowPosition`, converted back with each
+  viewer's own pan and zoom; `cursor` clears to `null` on pointer
+  leave, blur, and unmount; and only others are ever drawn. Nothing
+  about a cursor reaches Storage or PostgreSQL, and zoom, pan,
+  viewport, hover, and selection remain client-local. Nodes, edges,
+  editing, colours, templates, and Storage are all unchanged, and **no
+  dependency was installed** — `@liveblocks/react-flow` was already
+  here, and its 95-byte `styles.css` is imported by that one
+  component. `npx next typegen`, `npx tsc --noEmit`, `npm run lint`,
+  and `npm run build` all pass, reporting the same **eleven** routes
+  plus `ƒ Proxy (Middleware)`. **Not opened in a browser**, and
+  **never seen with two sessions in one room** — see *Unit 19* under
+  Completed, which names what a build cannot cover.
 - **Unit 18 — IA starter templates
   (`context/feature-specs/18-starter-template.md`) — code complete
   (2026-08-19).** A canvas can now be **started from a predefined
@@ -2765,6 +2899,443 @@ change.
     and the navbar section now naming the templates entry point and the
     ghost-versus-outline weighting of the three project actions).
 
+- Unit 19 — Presence avatars and live cursors (2026-08-21):
+  - Added `features/collaboration/presence-tokens.ts`: the two
+    dimensions the participant group is built from —
+    `MAX_VISIBLE_COLLABORATOR_AVATARS` (5) and
+    `PRESENCE_AVATAR_SIZE` (`1.75rem`). They are shared because the
+    avatar stack and the group around it must agree on both, which is
+    the same reason `features/canvas/canvas-*-tokens.ts` exist. Nothing
+    in it is a colour: a collaborator's colour is *data* from their
+    Liveblocks session, and the group's surface is Tailwind classes
+    against the palette.
+  - Added `features/collaboration/collaborator-avatar-stack.tsx`: the
+    other people in the room as an overlapping `AvatarGroup`.
+    **`useOthers`, so the current user cannot be rendered twice** —
+    Liveblocks reports `self` separately, so no filtering by ID is
+    needed to keep them out. The selector returns **connection IDs
+    only**, compared with `shallow`, and each avatar then subscribes to
+    its own collaborator through `useOther`: presence updates as often
+    as a cursor moves, so a plain `useOthers()` would re-render the
+    whole stack many times a second, and a list of IDs changes only
+    when somebody joins or leaves. It renders **nothing at all** when
+    the room holds one person, which is what takes the divider with it.
+  - Each collaborator is the existing `Avatar` primitive with the Clerk
+    image when there is one and **two-letter initials** (first and last
+    word of the display name) otherwise, ringed 2px in that person's
+    own cursor colour — the same hue as their cursor, which both
+    separates overlapping circles and keeps a dark profile picture from
+    dissolving into the canvas. Five faces at most; the remainder is an
+    `AvatarGroupCount` `+N` chip, left the primitive's muted circle
+    because it names no individual and so takes no collaborator colour.
+  - Identity comes from the session's own **`other.info`** — the name,
+    avatar, and colour `POST /api/liveblocks-auth` already attaches
+    server-side — so nothing read from presence is untrusted input.
+    `useUser` is deliberately **not** used: it resolves through a
+    `resolveUsers` callback on `LiveblocksProvider` that this
+    application does not have.
+  - Added `features/collaboration/canvas-participants.tsx`: the
+    top-right floating pill on the same
+    bordered-pill-on-`--card`-with-a-backdrop-blur surface as the
+    component toolbar and the control bar, at `z-20` — above React
+    Flow's own `z-index: 5` panels, below the two `z-40` side panels.
+    It holds the stack, the inset rule, and the current user's
+    `UserButton`, sized from the shared token so both halves match.
+  - **The `UserButton` moved rather than being duplicated.**
+    `editor-navbar.tsx` now renders it only when `projectName` is
+    `null`; with a project open the same button lives in the
+    participant group. That is what satisfies the spec's "current user
+    is shown once" — the literal alternative, leaving the navbar button
+    in place and adding a second one, would show the same person twice
+    a few pixels apart. Templates, Share, and the AI toggle are
+    untouched, the editor home is unchanged, and Clerk's profile and
+    sign-out flows are exactly as built.
+  - The group is mounted inside `RoomProvider` but **outside**
+    `CanvasConnectionBoundary` and the canvas' `ClientSideSuspense`,
+    under a new `relative h-full w-full` wrapper in
+    `canvas-room.tsx`. While a project is open this is the only account
+    menu on screen, so it has to survive the states the canvas does not
+    render in — connecting, and permanently failed. Only the
+    collaborator stack waits for presence, behind its own
+    `ClientSideSuspense fallback={null}`: a skeleton avatar would imply
+    somebody is there before the room can say whether anybody is.
+    Being inside the room is also what scopes presence to an open
+    project canvas and nowhere else.
+  - Two specificity exceptions, both forced rather than chosen. The
+    avatar diameter is an inline `width`/`height` because Clerk's own
+    rule for `userButtonAvatarBox` is **unlayered** while Tailwind's
+    utilities sit in a layer, so a size class would silently lose; our
+    avatars take the same inline value so one number sizes both halves.
+    The colour ring is an inline `boxShadow` because `AvatarGroup` sets
+    `ring-2 ring-background` on its children through a variant whose
+    selector outranks a plain class on the child.
+  - Added `features/collaboration/collaborator-cursors.tsx`: live
+    cursors as **`@liveblocks/react-flow`'s own `Cursors`**, mounted
+    among `<ReactFlow>`'s children before the two overlay pills so
+    cursors paint under them. Its source was read before choosing it,
+    and it does exactly what the spec asks: it writes the **existing
+    `cursor` presence key** (its own default) as a partial update, so
+    `isThinking` is untouched and **`liveblocks.config.ts` did not
+    change**; the value is **React Flow coordinates** through
+    `screenToFlowPosition` on the same flow instance the drop handler
+    uses; it clears `cursor` to `null` on pointer leave, on window
+    blur, and on unmount; it renders **only others**, from the room's
+    other connection IDs, so the current user's own cursor is never
+    drawn; it converts each stored point back with **this viewer's**
+    pan and zoom and subscribes to that transform, so two people at
+    different zoom levels see the pointer over the same component; and
+    it skips broadcasting while the pane is being dragged. Writing a
+    second implementation of any of that would have been a second
+    version of behaviour already in the tree.
+  - Only the **appearance** is ours, passed as `components.Cursor`: a
+    plain arrow filled with the collaborator's colour and stroked in
+    `var(--background)`, which is what keeps it visible over an amber
+    or red node, with a name badge of the same colour carrying
+    `text-background` type — the eight cursor colours are all light
+    saturated hues, so dark text is what stays legible on them. The
+    name is **always shown**, because eight colours means two people in
+    a busy room can share one. The badge hangs off the arrow's tail so
+    it does not cover the point being indicated.
+  - `@liveblocks/react-flow/styles.css` is imported by that component
+    alone, colocated as the canvas imports React Flow's `base.css`. It
+    is **one rule** — the layer's `position`, `inset`, `overflow`,
+    `pointer-events: none`, and a `z-index: 5` matching React Flow's
+    panel layer — so a cursor near the edge cannot paint over the
+    navbar and nobody else's pointer can intercept a click.
+    `@liveblocks/react-ui/styles.css` is deliberately not imported.
+  - **Cursor movement is presence and nothing else.** Nothing about it
+    reaches Liveblocks Storage or PostgreSQL, so it is not part of the
+    document, and **cursor coordinates are the only collaborative
+    presence data** — zoom, pan, viewport, hover, and selection remain
+    client-local, as unit 17 left them. No cursor trail.
+  - Untouched, deliberately: `liveblocks.config.ts`, `Storage.flow`,
+    `useLiveblocksFlow` and its four handlers, both custom renderers,
+    connection handling, node and edge editing, colours, drag and drop,
+    starter templates, the editor home, the project sidebar, and the
+    share dialog. `isThinking` still has no behaviour. Collaborator
+    avatars are **display-only** — not buttons, no menu, nothing on
+    click — and there is no participant menu, no comments, and no
+    notifications.
+  - **No dependency was installed.** `@liveblocks/react-flow` and
+    `@liveblocks/react-ui` were already here for `useLiveblocksFlow`,
+    and `Cursors`, `CursorsCursorProps`, `useOther`, `useOthers`, and
+    `shallow` are all existing exports — checked against the packages'
+    own `.d.ts` rather than assumed.
+  - Verified: `npx next typegen`, `npx tsc --noEmit`, `npm run lint`,
+    and `npm run build` all pass with no errors and no warnings,
+    reporting the same **eleven** routes plus `ƒ Proxy (Middleware)` —
+    this unit adds components and tokens, not routes.
+  - **Not opened in a browser, and never seen with two sessions in one
+    room — which is most of what this unit is.** Unverified: that a
+    second participant's avatar and cursor actually appear; that the
+    ring colour and the cursor colour visibly match for the same
+    person; that a remote cursor lands over the right component when
+    the two clients are at different zoom and pan, which is the claim
+    to check first because it is the one a reader cannot confirm from
+    the code; that `cursor` really clears when the pointer leaves;
+    that the `+N` chip is reached only past five; that the `UserButton`
+    sizes to `1.75rem` against Clerk's own stylesheet and reads as an
+    equal beside our avatars; and that the account menu is still
+    reachable on the canvas' loading and error states.
+  - Updated `context/ui-context.md` (new **Participant presence** and
+    **Live cursors** sections, and the navbar section now recording
+    that the right-hand side ends in the project actions *or* the user
+    menu, never both) and `context/architecture.md` (identity read from
+    `other.info` rather than `useUser`, presence subscribed by
+    connection ID, the participant group's mounting position, the
+    single-`UserButton` rule, and the cursor bullets — `Cursors` owning
+    both halves, the existing `cursor` key, flow coordinates, clearing
+    to `null`, and presence-only storage).
+
+- Unit 20 — AI sidebar shell (2026-08-21):
+  - Rewrote `components/editor/ai-sidebar.tsx` as the **shell only**:
+    the placement, the slide, the header, and the tab group. Every
+    mechanic the placeholder had is unchanged — `EditorShell` still owns
+    `isOpen` and `onClose`, the panel is still mounted only with a
+    project open, the navbar's `Sparkles` toggle still opens it, and the
+    `<aside>` keeps its `absolute inset-y-0 right-0 z-40 flex w-80`
+    overlay, its `bg-card` surface, its `border-l border-border`, its
+    `translate-x-full`→`translate-x-0` slide over 200ms, and `inert`
+    plus `aria-hidden` while closed. The last of those matters more than
+    it did: the panel now contains a focusable text field, so a closed
+    panel would otherwise put a textarea in the tab order behind the
+    canvas.
+  - The header is a `Bot` icon in a `size-8 rounded-lg bg-brand-surface`
+    square, the title `AI Workspace`, the subtitle
+    `Design your automation solution` in `text-xs text-muted-foreground`,
+    and the existing close button. The square is the **auth brand
+    panel's own treatment** — `bg-brand-surface` with a `text-primary`
+    icon — so marking this as an AI surface needed **no new token**.
+  - The tabs are the generated `Tabs` primitive with **nothing
+    restyled**: its active trigger already takes the accent surface and
+    `--foreground` while the inactive one stays `--muted-foreground`, so
+    `AI Architect` and `Specs` read exactly as the project sidebar's two
+    tabs do. Anything else would have been a restyle of a generated file
+    for a look the primitive already has.
+  - Added `features/ai-workspace/`, a new feature module, because the
+    panel's contents are not editor chrome: the shell owns where the
+    panel is and whether it is open, and this owns what is in it.
+  - `ai-architect-panel.tsx` is a `ScrollArea` conversation above the
+    composer. Its empty state is the same tinted bot square, a muted
+    line saying the AI Architect will help design this project's IA
+    solution, and the three starter-prompt chips from
+    `ai-architect-prompts.ts` — `Design a WorkHQ workflow`,
+    `Design a Design Studio process`, `Review this solution
+    architecture`.
+  - **The chips are `disabled`**, which is the spec's "UI suggestions
+    only" read through the convention this interface already has: an
+    action whose behaviour is not implemented is rendered visibly not
+    ready rather than wired to a no-op. Filling the composer from a chip
+    was considered and rejected — it is behaviour the specification does
+    not describe. If they should insert their text instead, that is a
+    one-line change in the panel, not a restructure.
+  - The empty state **replaces** the `ScrollArea` rather than sitting
+    inside it. Radix wraps a viewport's children in a `display: table`
+    element, so a percentage height does not resolve in there and a
+    centred column would have collapsed to its own height at the top of
+    the panel. The project sidebar does not hit this because its scroll
+    areas hold only a list.
+  - `ai-chat-composer.tsx` is the input: a `Textarea` auto-sizing
+    between **72px and 160px** and then scrolling, `Enter` to submit,
+    `Shift+Enter` for a newline, and a send button disabled on a blank
+    draft. The sizing is the primitive's **own `field-sizing-content`**
+    bounded by `min-h-18 max-h-40` — no measured height, no ref, and no
+    resize observer — with `resize-none` so the native grip is not a
+    second mechanism sizing the same box. An `Enter` closing an IME
+    candidate list is ignored via `isComposing`, so a composed language
+    can be typed.
+  - `ai-chat-message.tsx` draws a turn: a user message right-aligned in
+    a `rounded-xl` bubble on `--primary` with `--primary-foreground`
+    text, an assistant message left-aligned on `--popover` with a
+    `--border` edge and `--foreground` text. **The assistant branch is
+    unreachable today** and deliberately so — the spec asks for it to be
+    prepared, so both sides of a conversation are described in one place
+    rather than one arriving later beside the other.
+  - **Submitting calls nothing.** It appends the trimmed draft to a
+    local list as a `user` message and clears the field: no provider, no
+    route handler, no Vercel AI SDK, no Gemini, no streaming, and no
+    reply. Nothing is written to Liveblocks Storage, to Presence, or to
+    PostgreSQL, so the conversation is lost when the panel unmounts,
+    which is what this unit asks for.
+  - Added `hooks/use-ai-architect-chat.ts` and mounted it in
+    `AiSidebar` rather than in the tab that shows it, because
+    **Radix `Tabs` unmounts the inactive panel** (a fact already
+    recorded in Session Notes): state held inside `AI Architect` would
+    have been discarded every time somebody looked at `Specs`, losing
+    both the messages and a half-typed draft. This is the "keep shared
+    state in one hook and pass it down" rule, and it keeps the state
+    "local to the sidebar" in the literal sense the spec asks for.
+  - A message ID is a **per-mount counter**, not `Date.now()` and not a
+    random value. It is only a React key for a list in one browser, so
+    unlike a canvas node ID — a key in a `LiveMap` two clients write to
+    — there is no second writer to collide with, and a counter is also
+    identical on the server.
+  - `ai-specs-panel.tsx` is a full-width `Generate Spec` button over the
+    specifications list, holding one static example card:
+    `Solution Architecture Specification`, a `FileText` icon, a short
+    description of an automation solution design, and a `Download`
+    action. **`Generate Spec` and the download are both `disabled`** —
+    same convention as the chips — so nothing is generated, stored,
+    downloaded, or written to blob storage. The card sits on
+    `bg-popover`, the elevated surface, because the panel around it is
+    already `--card` and the `Card` primitive's own ring alone would
+    leave it reading as part of the panel.
+  - `components/editor/editor-navbar.tsx` changed by **one string**: the
+    AI toggle's `aria-label` is now `Open`/`Close AI workspace`, so the
+    accessible name matches the panel's visible title. Its behaviour,
+    its icon, its `aria-expanded`, and every other control in the bar
+    are untouched.
+  - Untouched, deliberately: `liveblocks.config.ts`, `Storage.flow`,
+    `useLiveblocksFlow`, both custom renderers, the component toolbar,
+    the control bar, starter templates, the participant group, live
+    cursors, the project sidebar, the share dialog, the `UserButton`,
+    and `EditorShell`'s own state beyond nothing at all. **`isThinking`
+    is still written by nothing** — AI activity and a collaborative
+    thinking state are a later unit, per the spec.
+  - **No token, no primitive, and no dependency was added.** The header
+    square reuses `--brand-surface`; `Button`, `Textarea`,
+    `ScrollArea`, `Tabs`, and `Card` were all already generated, and
+    none was modified.
+  - Verified: `npx next typegen`, `npx tsc --noEmit`, `npm run lint`,
+    and `npm run build` all pass with no errors and no warnings,
+    reporting the same **eleven** routes plus `ƒ Proxy (Middleware)` —
+    this unit adds components, not routes.
+  - **Not opened in a browser.** Unverified: that the textarea really
+    stops growing at 160px and scrolls rather than pushing the send
+    button out of the panel at `w-80`; that the empty state, the three
+    chips, and the spec card all fit that width without wrapping badly;
+    that `Enter` submits while `Shift+Enter` does not, and that neither
+    reaches the canvas keyboard shortcuts — `use-keyboard-shortcuts.ts`
+    already ignores an event inside a `textarea`, so this should hold,
+    and it is the first thing to check because it is the only way this
+    unit could break something that already worked; that the two tab
+    triggers are legible side by side at that width; and that a
+    submitted message survives a switch to `Specs` and back, which is
+    what the hoisted hook exists for.
+  - Updated `context/ui-context.md` (the **AI design assistant panel**
+    section is now **AI workspace panel**, describing the header, the
+    tabs, the empty state, both message treatments, the input bounds,
+    and the specs card) and `context/architecture.md` (the new
+    `features/ai-workspace/` boundary, and — under Background and AI
+    Model — that the AI workspace UI exists ahead of the provider, that
+    a provider belongs behind a `lib/` service module rather than in
+    these components, and that `isThinking` is still written by
+    nothing).
+
+- Unit 21 — Canvas snapshot persistence (2026-08-21):
+  - Installed **`@vercel/blob` 2.8.0**, the unit's one dependency. It
+    was not already present.
+  - Added `lib/blob.ts`, the Vercel Blob adapter and the **only module
+    that calls the Blob SDK**, per `architecture.md`'s rule that
+    storage is isolated behind a small service module.
+    `uploadJsonBlob(pathname, json)` stringifies, uploads with
+    `contentType: "application/json"`, and returns the URL. It reads
+    `BLOB_READ_WRITE_TOKEN` **at call time** and throws
+    `BlobNotConfiguredError` when it is absent — the same
+    lazy-credential pattern as `lib/liveblocks.ts`, which is what lets
+    `npm run build` load the route without any runtime environment.
+    The token is never passed to `put`; the SDK reads the same variable
+    itself.
+  - Blobs are written with **`access: "private"`**, isolated as one
+    `BLOB_ACCESS` constant. The pathname is deterministic and therefore
+    guessable, so a public blob would make an access-controlled
+    project's canvas readable by anyone who knew a project ID.
+  - `addRandomSuffix: false` with `allowOverwrite: true`, so each
+    capture **replaces** the project's snapshot file. One file per
+    project rather than an accumulation nothing would ever delete, and
+    a `canvasJsonPath` that stays valid across later snapshots.
+  - Added `features/canvas/canvas-snapshot.ts`, the format:
+    `CANVAS_SNAPSHOT_VERSION = 1`, the `CanvasSnapshot` interface
+    (`version`, `projectId`, `capturedAt` as ISO-8601, `storage`),
+    `createCanvasSnapshot`, and `canvasSnapshotPathname` →
+    `projects/<projectId>/canvas.json`. `storage` is the Liveblocks
+    tree **verbatim**, so the snapshot holds no second model of a node
+    or an edge. It is type-and-format only and touches no provider, so
+    it is safe on either side of the network boundary. Versioned from
+    the first snapshot, because a reader added later has to be able to
+    tell what it is holding.
+  - Added `ProjectRoomStorageJson = ToJson<Liveblocks["Storage"]>` to
+    `liveblocks.config.ts`, named there for the same reason
+    `ProjectUserInfo` is: importing the `Liveblocks` **class** from
+    `@liveblocks/node` shadows the global interface inside the server
+    adapter. `ToJson` is re-exported by `@liveblocks/client`, a direct
+    dependency, so nothing reaches into transitive `@liveblocks/core`.
+  - Added `getProjectRoomStorageJson` to `lib/liveblocks.ts`, which is
+    `getStorageDocument(projectId, "json")`. **This is the snapshot
+    source.** `"json"` rather than the default plain-LSON because no
+    later reader needs to know which nodes were `LiveMap`s.
+  - Added `recordProjectCanvasSnapshot` to
+    `features/projects/project-service.ts`, writing
+    **`Project.canvasJsonPath`** and nothing else — the existing field,
+    with no second canvas URL added. It is deliberately **not**
+    owner-scoped, unlike the rename and the delete: a collaborator
+    editing the canvas snapshots it too, and access is already resolved
+    by the route (invariant 6). An `updateMany`, so a project deleted
+    between that check and this write is a zero-row result rather than
+    a throw.
+  - Added `features/canvas/canvas-snapshot-service.ts`, where the three
+    stores meet: read the room, upload the file, record the reference —
+    **in that order**, so `canvasJsonPath` never points at a file that
+    does not exist. Nothing is retried or compensated; a snapshot is
+    secondary, so a failure loses nothing. It returns
+    `captured | missing`.
+  - Added **`PUT /api/projects/[projectId]/canvas`**, which takes **no
+    request body at all**. It resolves access with the existing
+    `resolveProjectAccess` — `401` unauthenticated, `404` for a missing
+    *or* inaccessible project — and allows an **owner or a
+    collaborator**. `BlobNotConfiguredError` and
+    `LiveblocksNotConfiguredError` each answer through
+    `configurationErrorResponse` with their own message; anything else
+    is rethrown.
+  - It passes **`access.project.id`**, the value the database returned,
+    rather than the URL segment, because that value is interpolated
+    into a Blob pathname.
+  - The response is **`{ capturedAt }`** and nothing more. The Blob URL
+    is not returned: the client has no use for it, and it addresses a
+    private file the server reads on the caller's behalf.
+  - Added `features/canvas/canvas-snapshot-client.ts` —
+    `saveCanvasSnapshot(projectId)` returning a plain `boolean`. No
+    third copy of the other clients' `readErrorMessage`, because the
+    indicator renders only three fixed strings and has nowhere to put a
+    server message. A network error is caught, so an autosave cannot
+    surface as an unhandled rejection in an effect.
+  - Added `hooks/use-canvas-snapshot.ts`, mounted inside
+    `CollaborativeFlow` because that is where the collaborative arrays
+    exist. It debounces **1500ms**, long enough to absorb a drag, a
+    burst of typing, or a template import as one snapshot.
+  - **Change is detected from a signature, not from array identity.**
+    `JSON.stringify` over document fields only — a node's ID, type,
+    position, size, and `data`; an edge's ID, endpoints, handles, type,
+    and `data` — deliberately excluding `selected`, `dragging`, and
+    `measured`, so a selection click costs no snapshot. Depending on
+    the arrays would have been an **infinite loop**: `saving` → `saved`
+    re-renders, React Flow hands back fresh identities, and the effect
+    fires again forever. The nested-array `JSON.stringify` also means a
+    node label — arbitrary user text — cannot be mistaken for a field
+    separator.
+  - **Nothing is snapshotted on mount.** The hook records a baseline
+    `{ projectId, signature }` in a ref on first sight of a canvas, and
+    the `projectId` half means navigating between two projects behaves
+    like a first mount rather than like an enormous edit. The baseline
+    moves when a request **starts**, not when it succeeds, so a failure
+    is not retried until the canvas changes again; a request-sequence
+    ref discards a slow response that lands after a later one.
+  - Added `features/canvas/canvas-snapshot-status.tsx`, a React Flow
+    `Panel position="top-left"` carrying `nodrag nopan nowheel` —
+    `Saving…`, `Saved`, `Save failed`, and **nothing at all** while
+    `idle`. Same bordered `--card` pill as every other canvas overlay,
+    with quieter contents: `text-xs` muted, a `size-3.5` icon, and a
+    failure marked by a warning triangle rather than a red surface.
+    `role="status"` with `aria-live="polite"`. **No Save button was
+    added.**
+  - **Top-left, not the workspace top bar.** `ui-context.md` had save
+    status in the navbar and that is not reachable: the status is
+    derived from the room's nodes and edges, and the navbar is rendered
+    by `EditorShell` above and outside `RoomProvider`. Top-left is also
+    the only free corner — presence is top-right, the control bar
+    bottom-left, the component toolbar bottom-centre.
+  - `features/collaboration/architecture-canvas.tsx` now takes a
+    `projectId` prop and threads it to `CollaborativeFlow`;
+    `canvas-room.tsx` passes the same ID it joined the room with, so
+    the canvas cannot snapshot a different project from the room it is
+    in.
+  - Untouched, deliberately: `useLiveblocksFlow` and every node and
+    edge mutation, `Storage.flow`, the Liveblocks room ID, starter
+    templates, presence and cursors, the AI sidebar, and the Prisma
+    schema — `canvasJsonPath` already existed. **Nothing loads a
+    snapshot back into a room**: not on startup, not over an empty
+    canvas, not at all. An empty Liveblocks canvas is valid state, and
+    snapshot recovery is a later unit.
+  - **No environment file was created, modified, inspected, or
+    printed.** `BLOB_READ_WRITE_TOKEN` must be configured separately;
+    without it the route answers a configuration error and the
+    indicator shows `Save failed`, while the canvas itself keeps
+    working normally in the room.
+  - Verified: `npx next typegen`, `npx tsc --noEmit`, `npm run lint`,
+    and `npm run build` all pass with no errors and no warnings,
+    reporting **twelve** routes — the eleven from Unit 20 plus
+    `ƒ /api/projects/[projectId]/canvas` — plus
+    `ƒ Proxy (Middleware)`.
+  - **Not opened in a browser, and no snapshot has ever been written**
+    (no Blob credential is configured in this environment). Unverified:
+    that a real capture succeeds end to end and that
+    `access: "private"` is supported by the store this deploys against
+    — a store without private blobs would make **every** snapshot fail,
+    visibly as `Save failed`, and the fix is the one `BLOB_ACCESS`
+    constant; that the first edit produces exactly one request rather
+    than one per change, and that opening a project produces none; that
+    a selection or a pan produces none; that a two-session edit leaves
+    the last writer's snapshot in place; and that the top-left pill
+    clears the project sidebar when it is open.
+  - Updated `context/architecture.md` (the **Liveblocks Storage is the
+    only home for canvas state** claim is now "the only *writable*
+    home", the Stack and Storage Model rows cover snapshots and the
+    server-side Blob rules, `lib/blob.ts` and the widened
+    `features/canvas/` are in System Boundaries, and there is a new
+    **Canvas snapshots** subsection) and `context/ui-context.md` (save
+    status has left the workspace top-bar list, and there is a new
+    **Canvas snapshot status** section).
+
 - Opening a project from the sidebar (audit fix, 2026-08-10):
   - `features/projects/project-list-item.tsx` rendered the
     project name as a plain `<span>`, so **nothing in the
@@ -3069,6 +3640,70 @@ What the run confirmed, all through the actual UI:
   button reads correctly beside Share at narrow widths. **None of it
   is blocked.**
 
+  **Unit 19 is the first unit that is mostly unverifiable without two
+  sessions**, since a presence feature has nothing to show a single
+  client: whether a second participant's avatar and cursor appear at
+  all, whether the ring colour and the cursor colour visibly match for
+  the same person, whether `cursor` really clears when a pointer leaves
+  the canvas, and — the first thing to check — whether a remote cursor
+  lands over the **same component** when the two clients are at
+  different zoom and pan. That last one is the only claim in the unit a
+  reader cannot confirm from the code, because it is a property of the
+  coordinate round-trip rather than of the DOM; if it is wrong, the
+  place to look is `Cursors`' own presence key and transform rather
+  than `collaborator-cursors.tsx`, which supplies appearance only.
+  Reaching more than five participants also needs five sessions, so the
+  `+N` chip is the item most likely to stay unseen. Needing one
+  browser: whether the `UserButton` sizes to `1.75rem` against Clerk's
+  own unlayered stylesheet and reads as an equal beside our avatars,
+  whether the pill clears the navbar and the AI panel at narrow widths,
+  and whether the account menu is still reachable on the canvas'
+  loading and error states — which is what the mounting position
+  outside both boundaries exists for. **None of it is blocked.**
+
+  **Unit 20 adds nothing needing a room or a second session**, which is
+  the point of it: the AI workspace is one browser's own panel, and
+  nothing in it touches Liveblocks, Presence, or the database. Its items
+  need only a look, and the first is the one that could break something
+  that already worked: whether `Enter` and `Shift+Enter` in the composer
+  stay out of the canvas keyboard shortcuts — `use-keyboard-shortcuts.ts`
+  ignores an event inside a `textarea`, so it should hold, but neither
+  key was in that hook's original test. Then whether the textarea stops
+  growing at 160px and scrolls instead of pushing the send button out of
+  a `w-80` panel; whether the empty state, the three chips, and the spec
+  card fit that width; whether both tab triggers are legible side by
+  side in it; and whether a submitted message survives a switch to
+  `Specs` and back, which is what hoisting the chat hook to the sidebar
+  exists for. **None of it is blocked.**
+
+  **Unit 21 is the first unit with an item that is genuinely blocked**,
+  and it is blocked on a credential rather than on code: no
+  `BLOB_READ_WRITE_TOKEN` is configured in this environment, so **no
+  snapshot has ever been written** and the whole server chain — the
+  Storage read, the upload, the `canvasJsonPath` write — is unexercised.
+  Until it is set, the indicator will show `Save failed` on every edit
+  while the canvas itself keeps working normally in the room, which is
+  the designed behaviour and not a regression. The first thing to check
+  once it is set is whether the store supports **`access: "private"`**:
+  a store without private blobs makes every snapshot fail identically,
+  and the fix is the single `BLOB_ACCESS` constant in `lib/blob.ts`
+  rather than anything in the route or the hook.
+
+  Needing one browser and a credential: whether the first edit produces
+  **exactly one** request rather than one per change, and whether
+  opening a project produces **none** — both are the debounce and the
+  skipped initial mount, and both are visible in the network panel;
+  whether a selection click, a pan, or a zoom produces none, which is
+  what excluding `selected`, `dragging`, and `measured` from the
+  signature is for; and whether the stored JSON really carries the
+  Storage tree rather than an empty `flow`. Needing two sessions: that
+  two people editing at once leave the last writer's snapshot in place
+  and neither overwrites the other's canvas — nothing reads a snapshot
+  back, so this should be uninteresting, and confirming it is
+  uninteresting is the point. Needing only a look: whether the top-left
+  pill clears the project sidebar when it is open, and whether `Saving…`
+  is on screen long enough to be read at all on a small canvas.
+
 ## Next Up
 
 - ~~**Grant a collaborator access to the Liveblocks room.**~~
@@ -3124,9 +3759,15 @@ What the run confirmed, all through the actual UI:
   from the bottom toolbar. **Units 16 and 17 closed two more:** a
   `canvasEdge` renderer draws every connection, and unit 17 added the
   viewport controls — zoom, fit view, and Liveblocks undo/redo, with
-  keyboard shortcuts. Still missing from that list: **all cursor and
-  presence UI**, which no unit has touched — `Presence` is typed and
-  still never written.
+  keyboard shortcuts. **Unit 19 closed the last of them (2026-08-21):**
+  `Presence.cursor` is now written, remote cursors are drawn in flow
+  coordinates, and a participant group shows who is in the room. Every
+  item on that original list is therefore built. `isThinking` remains
+  the one field of `Presence` nothing writes, deliberately — it belongs
+  to AI activity, and **unit 20 kept it that way on purpose**: that unit
+  built the AI workspace UI and its specification explicitly excluded
+  touching `isThinking`, so a collaborative thinking state waits for the
+  unit that adds a real model call to have something to report.
 - **What the canvas needs next, after unit 14.** Unit 14 closed the
   rename-and-resize gap this item used to describe: a component can be
   renamed by double-clicking its label and resized from its own
@@ -3142,9 +3783,12 @@ What the run confirmed, all through the actual UI:
   replace the native `title` on the component toolbar buttons — and now
   on the colour swatches and on the five control-bar buttons, whose
   hints carry the keyboard shortcuts and so are the most worth
-  upgrading. Unit 16 supplied the edge renderer and unit 17 the
-  viewport controls, which leaves **all cursor and presence UI** as the
-  part of this list no unit has touched.
+  upgrading. Unit 16 supplied the edge renderer, unit 17 the viewport
+  controls, and unit 19 the presence avatars and live cursors, so what
+  remains of this list is the properties panel, the drill-down
+  canvases, and the `Tooltip` primitive — which the participant group's
+  own `title` hints on the collaborator avatars have now added a third
+  place to.
 - **Node colours are now chosen by a person, which leaves the
   category question open rather than answered.** Unit 15 filled the
   token map with five themes and a toolbar to pick them, so this item
@@ -3155,14 +3799,42 @@ What the run confirmed, all through the actual UI:
   recoloured by hand if it does, has no specification. Decide that
   before attaching any meaning to a colour: today none of the
   application reads one.
-- **The AI design assistant.** The right panel is a
-  placeholder with no chat, no model call, and no state beyond
-  being open. It needs the Vercel AI SDK wiring, the
-  structured-output schemas, and the generation flow.
-- Lifecycle state and save status in the workspace navbar,
-  and the right properties panel for a selected requirement,
-  component, or finding, per the Main Layout section of
-  `ui-context.md`, once their feature specifications exist.
+- **The AI design assistant itself.** Unit 20 replaced the
+  placeholder with a real workspace — an `AI Architect` tab with a
+  local conversation and a working composer, and a `Specs` tab —
+  but **everything behind it is still absent**: no Vercel AI SDK
+  client, no Gemini call, no AI route handler, no structured-output
+  schemas, no streaming, and no validation-before-canvas step
+  (invariant 4). A submitted message gets no reply, `Generate Spec`
+  and the spec download are `disabled`, the starter chips are
+  `disabled`, and the conversation is unpersisted client state. This
+  is now the largest gap in the product, and the next AI unit should
+  say which of those it adds — a provider and a reply, or generation
+  onto the canvas — rather than both.
+- ~~Save status in the workspace navbar.~~ **Resolved by unit 21
+  (2026-08-21), in a different place.** Save status exists, as a
+  top-left canvas overlay rather than in the top bar, because it is
+  derived from the room's nodes and edges and the navbar is rendered
+  above and outside `RoomProvider`. `ui-context.md`'s Main Layout list
+  has been corrected accordingly. Moving it into the bar later would
+  need a context provider above both the shell and the room, which is a
+  restructure rather than a relocation — and the tracker records the
+  reason so it is not attempted as a tidy-up.
+- Lifecycle state in the workspace navbar, and the right properties
+  panel for a selected requirement, component, or finding, per the Main
+  Layout section of `ui-context.md`, once their feature specifications
+  exist.
+- **Snapshot recovery, and everything else that reads a snapshot.**
+  Unit 21 writes `projects/<projectId>/canvas.json` and records it in
+  `canvasJsonPath`, but **nothing reads it back** — there is no
+  recovery, no snapshot history, no manual restore, no export, and no
+  standards or AI feature consuming it. The format is versioned from
+  the first snapshot precisely so a reader can be added without
+  reopening what has already been written. Any such unit has to answer
+  the question this one deliberately refused: an empty Liveblocks
+  canvas is **valid state**, so a restore can never be automatic, and
+  what triggers one — and what it does to a room several people are in
+  — needs a specification before a line of it is written.
 
 ## Open Questions
 
@@ -3607,6 +4279,75 @@ What the run confirmed, all through the actual UI:
   styles are still `var(--token)` references held in the shared token
   map, so no literal colour enters the codebase and no dimension
   enters a component; `ui-context.md` records the exception.
+- **The current user's `UserButton` moved into the canvas rather than
+  being duplicated there.** Unit 19's specification asked for the
+  participant group to render "the current user separately using the
+  existing Clerk `UserButton`" while also keeping the project navbar
+  actions unchanged and showing the current user **once** — and the
+  navbar already held that button. The reading taken: the navbar
+  renders it only when no project is open, and the participant group
+  renders it when one is. The literal alternative, leaving the navbar
+  button and adding a second one, would put the same person on screen
+  twice a few pixels apart and fail the unit's own check. The navbar's
+  Templates, Share, and AI actions are untouched, the editor home is
+  unchanged, and Clerk's profile and sign-out flows are not replaced —
+  which is what keeps this inside the scope limits rather than a navbar
+  redesign.
+- **Cursor presence is `@liveblocks/react-flow`'s `Cursors`, not a
+  hand-rolled broadcast.** Its shipped source was read before choosing
+  it, and it already satisfies every requirement the unit lists: the
+  `cursor` presence key this application declares, `screenToFlowPosition`
+  for the outgoing point, this viewer's own transform for the incoming
+  ones, `null` on leave and blur and unmount, and others only. Writing
+  a second version would have duplicated behaviour already in the tree
+  and needed a `useUpdateMyPresence` throttle of our own. Only the
+  appearance is ours, through `components.Cursor`. The same reasoning
+  as the resize-history decision above: when the integration already
+  owns a behaviour, this application does not repeat it.
+- **A snapshot request carries no canvas, and the route takes no body.**
+  The obvious design — post the nodes and edges the client already has —
+  was rejected: those arrays are one participant's view of a document
+  several people are writing, so trusting them would make the browser a
+  second source of truth for the diagram and let any caller overwrite a
+  project's snapshot with anything at all. The server reads the room
+  itself through `getStorageDocument(projectId, "json")`. The client's
+  only role is to notice that something changed, which is also why the
+  hook's status is local and its request is a bare `PUT` with a project
+  ID in the URL.
+- **Blob snapshots are `access: "private"`, and the pathname is
+  deliberately deterministic.** `projects/<projectId>/canvas.json` with
+  `addRandomSuffix: false` and `allowOverwrite: true` means one file per
+  project that each capture replaces, so `canvasJsonPath` stays valid
+  and nothing accumulates — but it also means the URL is *guessable* by
+  anyone who knows a project ID, and project data is access-controlled.
+  Private access is what reconciles the two. It is isolated as one
+  `BLOB_ACCESS` constant, because a store without private-blob support
+  would make every snapshot fail and that is the one line to change.
+- **Change detection is a signature over document fields, not array
+  identity.** Depending on `[nodes, edges]` would loop forever:
+  `saving` → `saved` re-renders, React Flow hands back fresh
+  identities, and the effect fires again. The signature also *excludes*
+  `selected`, `dragging`, and `measured`, so a selection click or a
+  hover — which are one viewer's local state and not part of the
+  document — cost no snapshot. This is the same
+  what-belongs-to-the-document line the viewport and drag-preview rules
+  above draw, applied to deciding when to save.
+- **The snapshot baseline advances when a request starts, not when it
+  succeeds.** A failed snapshot is therefore left alone until the canvas
+  changes again, rather than retried against a server that is still
+  failing. It is affordable precisely because a snapshot is *secondary*:
+  the canvas is safe in the room, so the cost of not retrying is one
+  stale file and the cost of retrying is an unbounded loop. The
+  first-sight baseline is stored as `{ projectId, signature }`, which
+  makes navigating between projects behave like a first mount in the
+  same branch.
+- **`canvasJsonPath` is written unscoped by owner, unlike the rename and
+  the delete.** A collaborator editing the canvas is snapshotting it, so
+  scoping the update to an owner would silently stop saving for exactly
+  the users the feature is for. Access is already resolved by the route
+  (invariant 6), which is what makes the unscoped `updateMany` safe
+  rather than lax — and `updateMany` rather than `update` so a project
+  deleted mid-request is a `404` rather than a thrown exception.
 
 ## Session Notes
 
@@ -3966,6 +4707,12 @@ units 01–09 CDP run). These cost real time to find:
   `[role="tabpanel"][data-state="active"]` either way.
   `TabsTrigger` exposes no `value` attribute in the DOM —
   target it by `aria-controls$="-content-<value>"`.
+- **Radix `ScrollArea` wraps a viewport's children in a
+  `display: table` element**, so a percentage height inside one —
+  `h-full` on a centred empty state, for instance — does not
+  resolve and the content collapses to its own height at the top.
+  Put anything that must fill the scroll region **beside** the
+  `ScrollArea`, as a sibling flex child, rather than inside it.
 - **`TabsTrigger` activates on pointer events and ignores a
   synthetic `element.click()`.** A CDP-driven test must dispatch
   a real `Input.dispatchMouseEvent` press/release at the

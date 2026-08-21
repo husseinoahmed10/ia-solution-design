@@ -1,3 +1,4 @@
+import type { ToJson } from "@liveblocks/client";
 import type { LiveblocksFlow } from "@liveblocks/react-flow";
 
 import type { CanvasEdge, CanvasNode } from "@/types/canvas";
@@ -94,3 +95,22 @@ declare global {
  * definition rather than a second copy that could drift from it.
  */
 export type ProjectUserInfo = Liveblocks["UserMeta"]["info"];
+
+/**
+ * The room's `Storage` tree as plain JSON — every `LiveObject` and `LiveMap` above
+ * flattened to an object, which is the shape Liveblocks' server API returns for
+ * `format: "json"`.
+ *
+ * It is named here, beside the `Storage` declaration it is derived from, for the
+ * same reason `ProjectUserInfo` is: the server adapter imports the `Liveblocks`
+ * **class** from `@liveblocks/node`, which shadows the global interface, so it
+ * cannot write `ToJson<Liveblocks["Storage"]>` for itself.
+ *
+ * This is the authoritative canvas as a value that can be written to a file. It is
+ * what a canvas snapshot carries, verbatim and uninterpreted — the snapshot does
+ * not model nodes and edges a second time, so the document and what is stored
+ * cannot drift apart. `flow` is optional here because it is optional above: a room
+ * nobody has drawn in has no `flow` yet, and an empty canvas is valid state rather
+ * than missing data.
+ */
+export type ProjectRoomStorageJson = ToJson<Liveblocks["Storage"]>;
